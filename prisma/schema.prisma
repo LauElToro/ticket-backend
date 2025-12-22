@@ -1,0 +1,236 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Usuarios
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  password      String
+  name          String
+  dni           String   @unique
+  phone         String?
+  role          UserRole @default(USER)
+  emailVerified Boolean  @default(false)
+  personalQRCode String? @unique
+  personalQRHash String? @unique
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relaciones
+  ticketsPurchased   Ticket[]           @relation("TicketOwner")
+  ticketsTransferred TicketTransfer[]   @relation("TransferFrom")
+  ticketsReceived    TicketTransfer[]   @relation("TransferTo")
+  eventsCreated      Event[]
+  validations        TicketValidation[]
+  orders             Order[]
+
+  @@index([email])
+  @@index([dni])
+  @@index([personalQRCode])
+  @@index([personalQRHash])
+}
+
+enum UserRole {
+  USER
+  ORGANIZER
+  ADMIN
+  VALIDATOR
+}
+
+// Eventos
+model Event {
+  id          String   @id @default(cuid())
+  title       String
+  subtitle    String?
+  description String?  @db.Text
+  image       String?
+  category    String
+  date        DateTime
+  time        String
+  venue       String
+  address     String?
+  city        String
+  latitude    Decimal? @db.Decimal(10, 8)
+  longitude   Decimal? @db.Decimal(11, 8)
+  organizerId String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relaciones
+  organizer   User         @relation(fields: [organizerId], references: [id])
+  ticketTypes TicketType[]
+  tickets     Ticket[]
+  orders      Order[]
+
+  @@index([organizerId])
+  @@index([date])
+  @@index([city])
+  @@index([category])
+  @@index([isActive])
+}
+
+// Tipos de Entrada
+model TicketType {
+  id           String   @id @default(cuid())
+  eventId      String
+  name         String
+  price        Decimal  @db.Decimal(10, 2)
+  totalQty     Int
+  soldQty      Int      @default(0)
+  availableQty Int
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relaciones
+  event   Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  tickets Ticket[]
+
+  @@index([eventId])
+}
+
+// Órdenes de Compra
+model Order {
+  id            String        @id @default(cuid())
+  userId        String
+  eventId       String
+  totalAmount   Decimal       @db.Decimal(10, 2)
+  paymentMethod PaymentMethod
+  paymentStatus PaymentStatus @default(PENDING)
+  paymentId     String?
+  reservedUntil DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  completedAt   DateTime?
+
+  // Relaciones
+  user    User     @relation(fields: [userId], references: [id])
+  event   Event    @relation(fields: [eventId], references: [id])
+  tickets Ticket[]
+
+  @@index([userId])
+  @@index([eventId])
+  @@index([paymentStatus])
+}
+
+enum PaymentMethod {
+  MERCADOPAGO
+  BANK_TRANSFER
+  CASH
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+// Entradas
+model Ticket {
+  id           String       @id @default(cuid())
+  ticketTypeId String
+  eventId      String
+  ownerId      String
+  orderId      String
+  qrCode       String       @unique
+  qrHash       String       @unique
+  status       TicketStatus @default(ACTIVE)
+  purchaseDate DateTime     @default(now())
+  scannedAt    DateTime?
+  expiresAt    DateTime
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  // Relaciones
+  ticketType  TicketType         @relation(fields: [ticketTypeId], references: [id])
+  event       Event              @relation(fields: [eventId], references: [id])
+  owner       User               @relation("TicketOwner", fields: [ownerId], references: [id])
+  order       Order              @relation(fields: [orderId], references: [id])
+  transfers   TicketTransfer[]
+  validations TicketValidation[]
+
+  @@index([ownerId])
+  @@index([eventId])
+  @@index([orderId])
+  @@index([qrCode])
+  @@index([qrHash])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+enum TicketStatus {
+  PENDING_PAYMENT
+  ACTIVE
+  TRANSFERRED
+  USED
+  EXPIRED
+  CANCELLED
+}
+
+// Transferencias de Entradas
+model TicketTransfer {
+  id           String         @id @default(cuid())
+  ticketId     String
+  fromUserId   String
+  toUserId     String?
+  toEmail      String?
+  transferCode String?        @unique
+  qrCode       String?        @unique
+  method       TransferMethod @default(EMAIL)
+  status       TransferStatus @default(COMPLETED)
+  expiresAt    DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  completedAt  DateTime?
+
+  // Relaciones
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  fromUser User   @relation("TransferFrom", fields: [fromUserId], references: [id])
+  toUser   User?  @relation("TransferTo", fields: [toUserId], references: [id])
+
+  @@index([ticketId])
+  @@index([fromUserId])
+  @@index([toUserId])
+  @@index([transferCode])
+  @@index([status])
+}
+
+enum TransferMethod {
+  EMAIL
+  QR
+}
+
+enum TransferStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  COMPLETED
+}
+
+// Validaciones/Escaneos
+model TicketValidation {
+  id          String   @id @default(cuid())
+  ticketId    String
+  validatorId String
+  isValid     Boolean
+  scannedAt   DateTime @default(now())
+  reason      String?
+  metadata    Json?
+
+  // Relaciones
+  ticket    Ticket @relation(fields: [ticketId], references: [id])
+  validator User   @relation(fields: [validatorId], references: [id])
+
+  @@index([ticketId])
+  @@index([validatorId])
+  @@index([scannedAt])
+}
