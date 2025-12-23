@@ -20,6 +20,14 @@ router.delete('/events/:id', adminController.deleteEvent.bind(adminController));
 
 // Usuarios
 router.get('/users', adminController.getUsers.bind(adminController));
+
+// Crear vendedores y porteros (debe ir ANTES de /users/:id para evitar conflictos)
+router.post('/users/vendedor', adminController.createVendedor.bind(adminController));
+router.post('/users/portero', adminController.createPortero.bind(adminController));
+router.get('/vendedores', adminController.getAllVendedores.bind(adminController));
+router.get('/porteros', adminController.getAllPorteros.bind(adminController));
+
+// Rutas de usuarios con ID (debe ir DESPUÉS de las rutas específicas)
 router.get('/users/:id', adminController.getUserById.bind(adminController));
 router.put('/users/:id', adminController.updateUser.bind(adminController));
 router.post('/users/:id/block', adminController.blockUser.bind(adminController));

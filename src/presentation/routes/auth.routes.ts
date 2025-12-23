@@ -9,6 +9,7 @@ router.post('/register', authController.register.bind(authController));
 router.post('/login', authController.login.bind(authController));
 router.post('/refresh', authController.refresh.bind(authController));
 router.post('/verify-email', authController.verifyEmail.bind(authController));
+router.get('/me', authMiddleware, authController.getMe.bind(authController));
 router.get('/personal-qr', authMiddleware, authController.getPersonalQR.bind(authController));
 router.get('/personal-qr/image', authMiddleware, authController.getPersonalQRImage.bind(authController));
 

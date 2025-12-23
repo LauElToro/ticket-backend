@@ -22,7 +22,19 @@ export class EventController {
 
   async getById(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await this.eventService.getById(req.params.id);
+      const { id } = req.params;
+      const { link } = req.query; // Para eventos privados: ?link=privateLink
+      
+      const result = await this.eventService.getById(id, link as string);
+      
+      // Si el evento es privado y no se proporcionó el link correcto, retornar error
+      if (result && !result.isPublic && result.privateLink !== link) {
+        return res.status(403).json({
+          success: false,
+          message: 'Este evento es privado. Se requiere un link de acceso válido.',
+        });
+      }
+      
       res.json({
         success: true,
         data: result,

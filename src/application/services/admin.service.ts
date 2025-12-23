@@ -1,11 +1,17 @@
 import { AdminRepository } from '../../infrastructure/repositories/AdminRepository';
+import { VendedorService } from './vendedor.service';
+import { PorteroService } from './portero.service';
 import { AppError } from '../../infrastructure/middleware/error.middleware';
 
 export class AdminService {
   private adminRepository: AdminRepository;
+  private vendedorService: VendedorService;
+  private porteroService: PorteroService;
 
   constructor() {
     this.adminRepository = new AdminRepository();
+    this.vendedorService = new VendedorService();
+    this.porteroService = new PorteroService();
   }
 
   async getDashboard(userId: string) {
@@ -54,6 +60,35 @@ export class AdminService {
 
   async getEventStats(eventId: string) {
     return this.adminRepository.getEventStats(eventId);
+  }
+
+  async createVendedor(data: {
+    email: string;
+    password: string;
+    name: string;
+    dni: string;
+    phone?: string;
+    commissionPercent: number;
+  }, assignedBy: string) {
+    return this.vendedorService.createVendedor(data, assignedBy);
+  }
+
+  async createPortero(data: {
+    email: string;
+    password: string;
+    name: string;
+    dni: string;
+    phone?: string;
+  }, assignedBy: string) {
+    return this.porteroService.createPortero(data, assignedBy);
+  }
+
+  async getAllVendedores(assignedBy?: string) {
+    return this.vendedorService.getAllVendedores(assignedBy);
+  }
+
+  async getAllPorteros(assignedBy?: string) {
+    return this.porteroService.getAllPorteros(assignedBy);
   }
 }
 

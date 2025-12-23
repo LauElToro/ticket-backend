@@ -29,11 +29,17 @@ model User {
   eventsCreated      Event[]
   validations        TicketValidation[]
   orders             Order[]
+  favoriteEvents     FavoriteEvent[]
+  vendedorProfile    Vendedor?
+  porteroProfile     Portero?
+  assignedVendedores Vendedor[]         @relation("VendedorAssignedBy")
+  assignedPorteros   Portero[]          @relation("PorteroAssignedBy")
 
   @@index([email])
   @@index([dni])
   @@index([personalQRCode])
   @@index([personalQRHash])
+  @@index([role])
 }
 
 enum UserRole {
@@ -41,6 +47,8 @@ enum UserRole {
   ORGANIZER
   ADMIN
   VALIDATOR
+  VENDEDOR
+  PORTERO
 }
 
 // Eventos
@@ -60,6 +68,8 @@ model Event {
   longitude   Decimal? @db.Decimal(11, 8)
   organizerId String
   isActive    Boolean  @default(true)
+  isPublic    Boolean  @default(true) // true = público, false = privado (solo por link)
+  privateLink String?  @unique // Link único para eventos privados
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -68,12 +78,18 @@ model Event {
   ticketTypes TicketType[]
   tickets     Ticket[]
   orders      Order[]
+  favoriteUsers  FavoriteEvent[]
+  vendedores  VendedorEvent[]
+  referidos   Referido[]
+  tandas      Tanda[]
 
   @@index([organizerId])
   @@index([date])
   @@index([city])
   @@index([category])
   @@index([isActive])
+  @@index([isPublic])
+  @@index([privateLink])
 }
 
 // Tipos de Entrada
@@ -81,7 +97,6 @@ model TicketType {
   id           String   @id @default(cuid())
   eventId      String
   name         String
-  price        Decimal  @db.Decimal(10, 2)
   totalQty     Int
   soldQty      Int      @default(0)
   availableQty Int
@@ -89,10 +104,53 @@ model TicketType {
   updatedAt    DateTime @updatedAt
 
   // Relaciones
-  event   Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  tickets Ticket[]
+  event          Event              @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  tickets        Ticket[]
+  tandaTicketTypes TandaTicketType[]
 
   @@index([eventId])
+}
+
+// Tandas (Lotes) de Entradas
+model Tanda {
+  id        String   @id @default(cuid())
+  eventId   String
+  name      String   // Nombre de la tanda (ej: "Tanda 1", "Tanda 2")
+  startDate DateTime // Fecha de inicio de venta
+  endDate   DateTime // Fecha de fin de venta
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones
+  event           Event              @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  tandaTicketTypes TandaTicketType[]
+
+  @@index([eventId])
+  @@index([isActive])
+  @@index([startDate])
+  @@index([endDate])
+}
+
+// Relación entre Tanda y TicketType con precio específico
+model TandaTicketType {
+  id           String   @id @default(cuid())
+  tandaId      String
+  ticketTypeId String
+  price        Decimal  @db.Decimal(10, 2) // Precio específico para esta tanda
+  quantity     Int      // Cantidad de entradas disponibles en esta tanda
+  soldQty      Int      @default(0) // Cantidad vendida de esta tanda
+  availableQty Int      // Cantidad disponible de esta tanda
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relaciones
+  tanda     Tanda     @relation(fields: [tandaId], references: [id], onDelete: Cascade)
+  ticketType TicketType @relation(fields: [ticketTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([tandaId, ticketTypeId])
+  @@index([tandaId])
+  @@index([ticketTypeId])
 }
 
 // Órdenes de Compra
@@ -110,13 +168,19 @@ model Order {
   completedAt   DateTime?
 
   // Relaciones
-  user    User     @relation(fields: [userId], references: [id])
-  event   Event    @relation(fields: [eventId], references: [id])
-  tickets Ticket[]
+  user      User      @relation(fields: [userId], references: [id])
+  event     Event     @relation(fields: [eventId], references: [id])
+  tickets   Ticket[]
+  vendedor  Vendedor? @relation("VendedorSales", fields: [vendedorId], references: [id])
+  vendedorId String?
+  referido  Referido? @relation("ReferidoOrders", fields: [referidoId], references: [id])
+  referidoId String?
 
   @@index([userId])
   @@index([eventId])
   @@index([paymentStatus])
+  @@index([vendedorId])
+  @@index([referidoId])
 }
 
 enum PaymentMethod {
@@ -233,4 +297,98 @@ model TicketValidation {
   @@index([ticketId])
   @@index([validatorId])
   @@index([scannedAt])
+}
+
+// Vendedor
+model Vendedor {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  assignedBy        String   // ID del organizador/admin que lo asignó
+  assignedByUser    User     @relation("VendedorAssignedBy", fields: [assignedBy], references: [id])
+  commissionPercent Decimal  @db.Decimal(5, 2) // Porcentaje de comisión (ej: 10.50)
+  totalEarnings     Decimal  @default(0) @db.Decimal(10, 2)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  events    VendedorEvent[]
+  referidos Referido[]
+  sales     Order[]         @relation("VendedorSales")
+
+  @@index([userId])
+  @@index([assignedBy])
+  @@index([isActive])
+}
+
+// Asignación de eventos a vendedores
+model VendedorEvent {
+  id          String   @id @default(cuid())
+  vendedorId  String
+  eventId     String
+  ticketLimit Int?     // Cantidad máxima de entradas que puede vender
+  soldQty     Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  vendedor Vendedor @relation(fields: [vendedorId], references: [id], onDelete: Cascade)
+  event    Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([vendedorId, eventId])
+  @@index([vendedorId])
+  @@index([eventId])
+}
+
+// Links de referido personalizados
+model Referido {
+  id          String   @id @default(cuid())
+  vendedorId  String
+  eventId     String
+  customCode  String   @unique // Código personalizado del link
+  customUrl   String   @unique // URL completa del link
+  clickCount  Int      @default(0)
+  conversionCount Int  @default(0) // Cantidad de ventas generadas
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  vendedor Vendedor @relation(fields: [vendedorId], references: [id], onDelete: Cascade)
+  event    Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  orders   Order[]  @relation("ReferidoOrders")
+
+  @@index([vendedorId])
+  @@index([eventId])
+  @@index([customCode])
+}
+
+// Portero
+model Portero {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  assignedBy  String   // ID del organizador/admin que lo asignó
+  assignedByUser User   @relation("PorteroAssignedBy", fields: [assignedBy], references: [id])
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Los escaneos se obtienen a través de la relación con User -> TicketValidation
+
+  @@index([userId])
+  @@index([assignedBy])
+  @@index([isActive])
+}
+
+// Favoritos
+model FavoriteEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  eventId   String
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, eventId])
+  @@index([userId])
+  @@index([eventId])
 }

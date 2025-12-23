@@ -145,5 +145,57 @@ export class AdminController {
       next(error);
     }
   }
+
+  async createVendedor(req: Request, res: Response, next: NextFunction) {
+    try {
+      const assignedBy = (req as any).user?.id;
+      const result = await this.adminService.createVendedor(req.body, assignedBy);
+      res.status(201).json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async createPortero(req: Request, res: Response, next: NextFunction) {
+    try {
+      const assignedBy = (req as any).user?.id;
+      const result = await this.adminService.createPortero(req.body, assignedBy);
+      res.status(201).json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getAllVendedores(req: Request, res: Response, next: NextFunction) {
+    try {
+      const assignedBy = (req as any).user?.id;
+      const result = await this.adminService.getAllVendedores(assignedBy);
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getAllPorteros(req: Request, res: Response, next: NextFunction) {
+    try {
+      const assignedBy = (req as any).user?.id;
+      const result = await this.adminService.getAllPorteros(assignedBy);
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 

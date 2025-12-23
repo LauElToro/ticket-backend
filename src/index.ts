@@ -17,6 +17,11 @@ import { adminRoutes } from './presentation/routes/admin.routes';
 import { healthRoutes } from './presentation/routes/health.routes';
 import { uploadRoutes } from './presentation/routes/upload.routes';
 import { paymentPlacesRoutes } from './presentation/routes/payment-places.routes';
+import { favoriteRoutes } from './presentation/routes/favorite.routes';
+import { paymentRoutes } from './presentation/routes/payment.routes';
+import { webhookRoutes } from './presentation/routes/webhook.routes';
+import { vendedorRoutes } from './presentation/routes/vendedor.routes';
+import { porteroRoutes } from './presentation/routes/portero.routes';
 import { startTicketExpirationJob } from './infrastructure/jobs/ticket-expiration.job';
 import path from 'path';
 
@@ -90,6 +95,11 @@ app.use('/api/validation', validationRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/payment-places', paymentPlacesRoutes);
+app.use('/api/favorites', favoriteRoutes);
+app.use('/api/payments', paymentRoutes);
+app.use('/api/webhooks', webhookRoutes);
+app.use('/api/vendedores', vendedorRoutes);
+app.use('/api/porteros', porteroRoutes);
 
 // Error handler
 app.use(errorHandler);

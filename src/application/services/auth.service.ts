@@ -146,6 +146,23 @@ export class AuthService {
     }
   }
 
+  async getMe(userId: string) {
+    const user = await this.userRepository.findById(userId);
+    if (!user) {
+      throw new AppError('Usuario no encontrado', 404, 'USER_NOT_FOUND');
+    }
+
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      dni: user.dni,
+      phone: user.phone,
+      emailVerified: user.emailVerified,
+    };
+  }
+
   async verifyEmail(token: string) {
     const userId = await redisClient.get(`email-verification:${token}`);
     if (!userId) {
