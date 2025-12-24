@@ -176,5 +176,31 @@ export class VendedorController {
       next(error);
     }
   }
+
+  async syncReferidos(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      const { prisma } = await import('../../infrastructure/database/prisma');
+      const vendedor = await prisma.vendedor.findUnique({
+        where: { userId },
+      });
+
+      if (!vendedor) {
+        return res.status(404).json({
+          success: false,
+          error: { message: 'Vendedor no encontrado' },
+        });
+      }
+
+      const result = await this.vendedorService.syncReferidos(vendedor.id);
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
+
 

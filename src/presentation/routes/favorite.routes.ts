@@ -12,3 +12,4 @@ router.get('/:eventId/check', authMiddleware, favoriteController.checkFavorite.b
 
 export { router as favoriteRoutes };
 
+

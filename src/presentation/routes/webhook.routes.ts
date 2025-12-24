@@ -9,3 +9,4 @@ router.post('/mercadopago', webhookController.handleMercadoPagoWebhook.bind(webh
 
 export { router as webhookRoutes };
 
+

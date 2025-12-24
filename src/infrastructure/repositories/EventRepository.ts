@@ -43,6 +43,24 @@ export class EventRepository {
         take: limit,
         include: {
           ticketTypes: true,
+          tandas: {
+            where: { isActive: true },
+            include: {
+              tandaTicketTypes: {
+                include: {
+                  ticketType: {
+                    select: {
+                      id: true,
+                      name: true,
+                    },
+                  },
+                },
+              },
+            },
+            orderBy: {
+              startDate: 'asc',
+            },
+          },
           organizer: {
             select: {
               id: true,

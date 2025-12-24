@@ -686,7 +686,6 @@ export class AdminRepository {
               select: {
                 id: true,
                 name: true,
-                price: true,
               },
             },
           },
@@ -856,6 +855,21 @@ export class AdminRepository {
   }
 
   async getEventStats(eventId: string) {
+    // Verificar primero si el evento existe
+    const eventExists = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: { id: true },
+    });
+
+    if (!eventExists) {
+      return {
+        event: null,
+        ticketsSold: 0,
+        ticketsScanned: 0,
+        revenue: 0,
+      };
+    }
+
     const [event, ticketsSold, ticketsScanned, revenue] = await Promise.all([
       prisma.event.findUnique({
         where: { id: eventId },
@@ -864,10 +878,24 @@ export class AdminRepository {
             select: {
               id: true,
               name: true,
-              price: true,
               totalQty: true,
               soldQty: true,
               availableQty: true,
+            },
+          },
+          tandas: {
+            where: { isActive: true },
+            include: {
+              tandaTicketTypes: {
+                include: {
+                  ticketType: {
+                    select: {
+                      id: true,
+                      name: true,
+                    },
+                  },
+                },
+              },
             },
           },
         },

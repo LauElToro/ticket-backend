@@ -11,6 +11,7 @@ router.get('/metrics', authMiddleware, requireRole('VENDEDOR'), vendedorControll
 router.post('/referidos', authMiddleware, requireRole('VENDEDOR'), vendedorController.createReferido.bind(vendedorController));
 router.put('/referidos/code', authMiddleware, requireRole('VENDEDOR'), vendedorController.updateReferidoCode.bind(vendedorController));
 router.put('/referidos/all-codes', authMiddleware, requireRole('VENDEDOR'), vendedorController.updateAllReferidoCodes.bind(vendedorController));
+router.post('/referidos/sync', authMiddleware, requireRole('VENDEDOR'), vendedorController.syncReferidos.bind(vendedorController));
 
 // Rutas para organizadores/admins (crear y gestionar vendedores)
 router.post('/', authMiddleware, requireRole('ORGANIZER', 'ADMIN'), vendedorController.createVendedor.bind(vendedorController));
@@ -18,4 +19,5 @@ router.post('/assign-event', authMiddleware, requireRole('ORGANIZER', 'ADMIN'), 
 router.get('/', authMiddleware, requireRole('ORGANIZER', 'ADMIN'), vendedorController.getAllVendedores.bind(vendedorController));
 
 export { router as vendedorRoutes };
+
 

@@ -59,7 +59,11 @@ export class AdminService {
   }
 
   async getEventStats(eventId: string) {
-    return this.adminRepository.getEventStats(eventId);
+    const stats = await this.adminRepository.getEventStats(eventId);
+    if (!stats || !stats.event) {
+      throw new AppError('Evento no encontrado', 404, 'EVENT_NOT_FOUND');
+    }
+    return stats;
   }
 
   async createVendedor(data: {

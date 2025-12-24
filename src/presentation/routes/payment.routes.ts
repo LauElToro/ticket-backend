@@ -9,3 +9,4 @@ router.post('/mercadopago/create-preference', authMiddleware, paymentController.
 
 export { router as paymentRoutes };
 
+

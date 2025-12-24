@@ -136,7 +136,17 @@ export class AdminController {
 
   async getEventStats(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await this.adminService.getEventStats(req.params.id);
+      const eventId = req.params.id;
+      if (!eventId) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            message: 'ID de evento no proporcionado',
+            code: 'MISSING_EVENT_ID',
+          },
+        });
+      }
+      const result = await this.adminService.getEventStats(eventId);
       res.json({
         success: true,
         data: result,
