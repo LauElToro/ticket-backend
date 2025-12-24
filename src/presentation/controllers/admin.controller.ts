@@ -122,6 +122,43 @@ export class AdminController {
     }
   }
 
+  async deleteUser(req: Request, res: Response, next: NextFunction) {
+    try {
+      const assignedBy = (req as any).user?.id;
+      await this.adminService.deleteUser(req.params.id, assignedBy);
+      res.json({
+        success: true,
+        message: 'Usuario eliminado exitosamente',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async exportUsersToExcel(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userRole = (req as any).user?.role;
+      
+      // Solo ADMIN puede exportar
+      if (userRole !== 'ADMIN') {
+        return res.status(403).json({
+          success: false,
+          message: 'Solo los administradores pueden exportar usuarios',
+        });
+      }
+
+      const excelBuffer = await this.adminService.exportUsersToExcel();
+      
+      const fileName = `usuarios-${new Date().toISOString().split('T')[0]}.xlsx`;
+      
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.send(excelBuffer);
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async blockUser(req: Request, res: Response, next: NextFunction) {
     try {
       await this.adminService.blockUser(req.params.id);

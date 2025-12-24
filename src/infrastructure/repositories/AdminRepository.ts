@@ -168,36 +168,57 @@ export class AdminRepository {
     
     const isOrganizer = user?.role === 'ORGANIZER' && user?.role !== 'ADMIN';
 
-    return prisma.event.findMany({
-      where: {
-        ...(isOrganizer ? { organizerId: userId } : {}),
-        ...(query.search ? {
-          OR: [
-            { title: { contains: query.search, mode: 'insensitive' } },
-            { category: { contains: query.search, mode: 'insensitive' } },
-          ],
-        } : {}),
-        ...(query.isActive !== undefined ? { isActive: query.isActive === 'true' } : {}),
-      },
-      include: {
-        ticketTypes: true,
-        organizer: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
+    const page = parseInt(query.page || '1', 10);
+    const limit = parseInt(query.limit || '20', 10);
+    const skip = (page - 1) * limit;
+
+    const where: any = {
+      ...(isOrganizer ? { organizerId: userId } : {}),
+      ...(query.search ? {
+        OR: [
+          { title: { contains: query.search, mode: 'insensitive' } },
+          { category: { contains: query.search, mode: 'insensitive' } },
+        ],
+      } : {}),
+      ...(query.isActive !== undefined ? { isActive: query.isActive === 'true' } : {}),
+    };
+
+    const [events, total] = await Promise.all([
+      prisma.event.findMany({
+        where,
+        skip,
+        take: limit,
+        include: {
+          ticketTypes: true,
+          organizer: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          _count: {
+            select: {
+              tickets: true,
+            },
           },
         },
-        _count: {
-          select: {
-            tickets: true,
-          },
+        orderBy: {
+          createdAt: 'desc',
         },
+      }),
+      prisma.event.count({ where }),
+    ]);
+
+    return {
+      events,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
       },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
+    };
   }
 
   async createEvent(data: any, userId: string) {
@@ -583,10 +604,20 @@ export class AdminRepository {
 
   async getUsers(query: any) {
     const where: any = {};
+    const andConditions: any[] = [];
     
     // Filtrar por rol si se especifica
     if (query.role && query.role !== 'all') {
       where.role = query.role;
+    }
+
+    // Filtrar por búsqueda si se especifica
+    if (query.search) {
+      where.OR = [
+        { name: { contains: query.search, mode: 'insensitive' } },
+        { email: { contains: query.search, mode: 'insensitive' } },
+        { dni: { contains: query.search, mode: 'insensitive' } },
+      ];
     }
 
     // Filtrar por organizador si se especifica (para ver solo sus vendedores/porteros)
@@ -596,21 +627,104 @@ export class AdminRepository {
         { porteroProfile: { assignedBy: query.assignedBy } }
       ];
       
-      // Si hay filtro por rol, combinarlo con el filtro de assignedBy
-      if (where.role) {
-        where.AND = [
-          { role: where.role },
-          { OR: assignedByConditions }
-        ];
-        delete where.role; // Ya está incluido en AND
+      // Si hay filtro por rol o búsqueda, combinarlo con el filtro de assignedBy
+      if (where.role || where.OR) {
+        if (where.role) {
+          andConditions.push({ role: where.role });
+        }
+        if (where.OR) {
+          andConditions.push({ OR: where.OR });
+        }
+        andConditions.push({ OR: assignedByConditions });
+        where.AND = andConditions;
+        delete where.role;
+        delete where.OR;
       } else {
         // Solo filtro por assignedBy
         where.OR = assignedByConditions;
       }
     }
 
+    const page = parseInt(query.page || '1', 10);
+    const limit = parseInt(query.limit || '20', 10);
+    const skip = (page - 1) * limit;
+
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        skip,
+        take: limit,
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          dni: true,
+          phone: true,
+          role: true,
+          emailVerified: true,
+          createdAt: true,
+          updatedAt: true,
+          vendedorProfile: {
+            include: {
+              assignedByUser: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                },
+              },
+              _count: {
+                select: {
+                  sales: {
+                    where: {
+                      paymentStatus: 'COMPLETED',
+                    },
+                  },
+                  events: true,
+                },
+              },
+            },
+          },
+          porteroProfile: {
+            include: {
+              assignedByUser: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                },
+              },
+            },
+          },
+          _count: {
+            select: {
+              ticketsPurchased: true,
+              orders: true,
+              eventsCreated: true,
+              validations: true, // Para contar escaneos del portero
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      }),
+      prisma.user.count({ where }),
+    ]);
+
+    return {
+      users,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  async getAllUsersForExport() {
     return prisma.user.findMany({
-      where,
       select: {
         id: true,
         email: true,
@@ -658,13 +772,47 @@ export class AdminRepository {
             ticketsPurchased: true,
             orders: true,
             eventsCreated: true,
-            validations: true, // Para contar escaneos del portero
+            validations: true,
           },
         },
       },
       orderBy: {
         createdAt: 'desc',
       },
+    });
+  }
+
+  async deleteUser(userId: string, assignedBy: string) {
+    // Verificar que el usuario fue creado por el admin/organizador actual
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        vendedorProfile: true,
+        porteroProfile: true,
+      },
+    });
+
+    if (!user) {
+      throw new Error('Usuario no encontrado');
+    }
+
+    // Verificar que el usuario fue asignado por el admin/organizador actual
+    const isAssignedBy = 
+      (user.vendedorProfile && user.vendedorProfile.assignedBy === assignedBy) ||
+      (user.porteroProfile && user.porteroProfile.assignedBy === assignedBy);
+
+    if (!isAssignedBy) {
+      throw new Error('No tienes permisos para eliminar este usuario. Solo puedes eliminar usuarios que creaste.');
+    }
+
+    // No permitir eliminar usuarios ADMIN u ORGANIZER
+    if (user.role === 'ADMIN' || user.role === 'ORGANIZER') {
+      throw new Error('No se pueden eliminar usuarios ADMIN u ORGANIZER');
+    }
+
+    // Eliminar el usuario (cascada eliminará los perfiles relacionados)
+    return prisma.user.delete({
+      where: { id: userId },
     });
   }
 

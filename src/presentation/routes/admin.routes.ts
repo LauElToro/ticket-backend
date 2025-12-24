@@ -20,6 +20,8 @@ router.delete('/events/:id', adminController.deleteEvent.bind(adminController));
 
 // Usuarios
 router.get('/users', adminController.getUsers.bind(adminController));
+// Exportar usuarios - Solo ADMIN
+router.get('/users/export', requireRole('ADMIN'), adminController.exportUsersToExcel.bind(adminController));
 
 // Crear vendedores y porteros (debe ir ANTES de /users/:id para evitar conflictos)
 router.post('/users/vendedor', adminController.createVendedor.bind(adminController));
@@ -30,6 +32,7 @@ router.get('/porteros', adminController.getAllPorteros.bind(adminController));
 // Rutas de usuarios con ID (debe ir DESPUÉS de las rutas específicas)
 router.get('/users/:id', adminController.getUserById.bind(adminController));
 router.put('/users/:id', adminController.updateUser.bind(adminController));
+router.delete('/users/:id', adminController.deleteUser.bind(adminController));
 router.post('/users/:id/block', adminController.blockUser.bind(adminController));
 
 // Estadísticas

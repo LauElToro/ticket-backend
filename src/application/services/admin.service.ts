@@ -50,6 +50,10 @@ export class AdminService {
     return this.adminRepository.getUserById(id);
   }
 
+  async deleteUser(userId: string, assignedBy: string) {
+    return this.adminRepository.deleteUser(userId, assignedBy);
+  }
+
   async updateUser(id: string, data: any) {
     return this.adminRepository.updateUser(id, data);
   }
@@ -93,6 +97,63 @@ export class AdminService {
 
   async getAllPorteros(assignedBy?: string) {
     return this.porteroService.getAllPorteros(assignedBy);
+  }
+
+  async exportUsersToExcel() {
+    const users = await this.adminRepository.getAllUsersForExport();
+    
+    // Importar xlsx dinámicamente
+    const XLSX = require('xlsx');
+    
+    // Preparar los datos para el Excel
+    const excelData = users.map((user: any) => {
+      const row: any = {
+        'ID': user.id,
+        'Email': user.email,
+        'Nombre': user.name || '',
+        'DNI': user.dni || '',
+        'Teléfono': user.phone || '',
+        'Rol': user.role,
+        'Email Verificado': user.emailVerified ? 'Sí' : 'No',
+        'Fecha de Registro': new Date(user.createdAt).toLocaleDateString('es-AR'),
+        'Última Actualización': new Date(user.updatedAt).toLocaleDateString('es-AR'),
+      };
+
+      // Datos específicos de vendedor
+      if (user.vendedorProfile) {
+        row['Tipo'] = 'Vendedor';
+        row['Comisión (%)'] = user.vendedorProfile.commissionPercent || '';
+        row['Ganancias Totales'] = user.vendedorProfile.totalEarnings || 0;
+        row['Ventas Completadas'] = user.vendedorProfile._count?.sales || 0;
+        row['Eventos Asignados'] = user.vendedorProfile._count?.events || 0;
+        row['Asignado por'] = user.vendedorProfile.assignedByUser?.name || '';
+        row['Email Asignador'] = user.vendedorProfile.assignedByUser?.email || '';
+      } else if (user.porteroProfile) {
+        row['Tipo'] = 'Portero';
+        row['Escaneos Realizados'] = user._count?.validations || 0;
+        row['Asignado por'] = user.porteroProfile.assignedByUser?.name || '';
+        row['Email Asignador'] = user.porteroProfile.assignedByUser?.email || '';
+      } else {
+        row['Tipo'] = 'Usuario Regular';
+      }
+
+      // Estadísticas generales
+      row['Entradas Compradas'] = user._count?.ticketsPurchased || 0;
+      row['Órdenes Realizadas'] = user._count?.orders || 0;
+      row['Eventos Creados'] = user._count?.eventsCreated || 0;
+
+      return row;
+    });
+
+    // Crear el workbook y worksheet
+    const worksheet = XLSX.utils.json_to_sheet(excelData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Usuarios');
+
+    // Generar el buffer del Excel
+    const excelBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+    return excelBuffer;
   }
 }
 
