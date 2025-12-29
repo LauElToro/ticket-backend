@@ -13,7 +13,7 @@ const registerSchema = z.object({
   password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),
   name: z.string().min(2, 'El nombre debe tener al menos 2 caracteres'),
   dni: z.string().regex(/^\d{7,8}$/, 'DNI inválido'),
-  phone: z.string().optional(),
+  phone: z.string().min(1, 'El teléfono es obligatorio'),
 });
 
 export class AuthService {

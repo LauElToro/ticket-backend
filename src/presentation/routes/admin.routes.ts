@@ -38,5 +38,13 @@ router.post('/users/:id/block', adminController.blockUser.bind(adminController))
 // Estadísticas
 router.get('/stats/events/:id', adminController.getEventStats.bind(adminController));
 
+// Configuración de Tracking
+router.get('/tracking-config', adminController.getTrackingConfig.bind(adminController));
+router.put('/tracking-config', adminController.updateTrackingConfig.bind(adminController));
+
+// Configuración Contable
+router.get('/accounting-config', adminController.getAccountingConfig.bind(adminController));
+router.put('/accounting-config', adminController.updateAccountingConfig.bind(adminController));
+
 export { router as adminRoutes };
 

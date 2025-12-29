@@ -21,7 +21,7 @@ export class PorteroService {
     password: string;
     name: string;
     dni: string;
-    phone?: string;
+    phone: string;
   }, assignedBy: string) {
     // Verificar que el usuario asignador es organizador o admin
     const assigner = await this.userRepository.findById(assignedBy);

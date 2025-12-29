@@ -22,6 +22,7 @@ import { paymentRoutes } from './presentation/routes/payment.routes';
 import { webhookRoutes } from './presentation/routes/webhook.routes';
 import { vendedorRoutes } from './presentation/routes/vendedor.routes';
 import { porteroRoutes } from './presentation/routes/portero.routes';
+import { trackingRoutes } from './presentation/routes/tracking.routes';
 import { startTicketExpirationJob } from './infrastructure/jobs/ticket-expiration.job';
 import path from 'path';
 
@@ -100,6 +101,7 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/vendedores', vendedorRoutes);
 app.use('/api/porteros', porteroRoutes);
+app.use('/api/tracking', trackingRoutes);
 
 // Error handler
 app.use(errorHandler);

@@ -31,7 +31,7 @@ export class UserRepository implements IUserRepository {
     password: string;
     name: string;
     dni: string;
-    phone?: string;
+    phone: string;
     role?: UserRole;
   }): Promise<User> {
     // Generar QR personal antes de crear el usuario

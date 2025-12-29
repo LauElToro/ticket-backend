@@ -10,7 +10,7 @@ export interface IUserRepository {
     password: string;
     name: string;
     dni: string;
-    phone?: string;
+    phone: string;
     role?: UserRole;
   }): Promise<User>;
   update(id: string, data: Partial<User>): Promise<User>;

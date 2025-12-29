@@ -142,7 +142,24 @@ export class AdminRepository {
     const event = await prisma.event.findUnique({
       where: { id },
       include: {
-        ticketTypes: true,
+        ticketTypes: {
+          include: {
+            tandaTicketTypes: {
+              include: {
+                tanda: true,
+              },
+            },
+          },
+        },
+        tandas: {
+          include: {
+            tandaTicketTypes: {
+              include: {
+                ticketType: true,
+              },
+            },
+          },
+        },
         organizer: {
           select: {
             id: true,
@@ -244,6 +261,20 @@ export class AdminRepository {
       privateLink = randomBytes(8).toString('hex');
     }
 
+    // Obtener configuración global de tracking si no se especifica en el evento
+    let metaPixelId = eventData.metaPixelId || null;
+    let googleAdsId = eventData.googleAdsId || null;
+    
+    if (!metaPixelId || !googleAdsId) {
+      const trackingConfig = await prisma.trackingConfig.findUnique({
+        where: { userId },
+      });
+      if (trackingConfig) {
+        metaPixelId = metaPixelId || trackingConfig.metaPixelId;
+        googleAdsId = googleAdsId || trackingConfig.googleAdsId;
+      }
+    }
+
     // Construir objeto de datos explícitamente para asegurar que todos los campos estén presentes
     const prismaData: any = {
       title: eventData.title,
@@ -259,6 +290,8 @@ export class AdminRepository {
       organizerId: userId,
       isPublic: eventData.isPublic !== undefined ? eventData.isPublic : true,
       privateLink: privateLink || null,
+      metaPixelId: metaPixelId,
+      googleAdsId: googleAdsId,
     };
 
     // Agregar coordenadas si están presentes
@@ -379,12 +412,34 @@ export class AdminRepository {
       throw new Error('No autorizado para editar este evento');
     }
 
+    // Obtener configuración global de tracking si no se especifica en el evento
+    let metaPixelId = eventData.metaPixelId !== undefined ? eventData.metaPixelId : existingEvent.metaPixelId;
+    let googleAdsId = eventData.googleAdsId !== undefined ? eventData.googleAdsId : existingEvent.googleAdsId;
+    
+    if (!metaPixelId || !googleAdsId) {
+      const trackingConfig = await prisma.trackingConfig.findUnique({
+        where: { userId },
+      });
+      if (trackingConfig) {
+        metaPixelId = metaPixelId || trackingConfig.metaPixelId;
+        googleAdsId = googleAdsId || trackingConfig.googleAdsId;
+      }
+    }
+
     // Construir updateData sin ticketTypes
     const updateData: any = { ...eventData };
     
     // Asegurarse de que ticketTypes y tandas no estén en updateData
     delete updateData.ticketTypes;
     delete updateData.tandas;
+    
+    // Incluir campos de tracking
+    if (metaPixelId !== undefined) {
+      updateData.metaPixelId = metaPixelId;
+    }
+    if (googleAdsId !== undefined) {
+      updateData.googleAdsId = googleAdsId;
+    }
 
     // Manejar isPublic y privateLink
     if (eventData.isPublic !== undefined) {

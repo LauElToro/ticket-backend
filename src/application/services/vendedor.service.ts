@@ -24,7 +24,7 @@ export class VendedorService {
     password: string;
     name: string;
     dni: string;
-    phone?: string;
+    phone: string;
     commissionPercent: number;
   }, assignedBy: string) {
     // Verificar que el usuario asignador es organizador o admin

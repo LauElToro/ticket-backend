@@ -62,8 +62,21 @@ export class MercadoPagoService {
         data.back_urls?.success?.includes('127.0.0.1') || 
         data.back_urls?.success?.includes('0.0.0.0');
 
+      // Validar y normalizar items antes de enviar
+      const normalizedItems = data.items.map((item: any) => ({
+        title: item.title,
+        quantity: Number(item.quantity) || 1,
+        unit_price: parseFloat(Number(item.unit_price).toFixed(2)), // Asegurar formato correcto
+      }));
+
+      // Log para debugging
+      logger.info('Items normalizados para MercadoPago', {
+        items: normalizedItems,
+        originalItems: data.items,
+      });
+
       const preferenceData: any = {
-        items: data.items,
+        items: normalizedItems,
         back_urls: data.back_urls || {},
         notification_url: data.notification_url,
         external_reference: data.external_reference,

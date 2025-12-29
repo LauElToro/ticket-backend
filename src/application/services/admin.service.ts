@@ -1,7 +1,11 @@
 import { AdminRepository } from '../../infrastructure/repositories/AdminRepository';
 import { VendedorService } from './vendedor.service';
 import { PorteroService } from './portero.service';
+import { AccountingService } from './accounting.service';
 import { AppError } from '../../infrastructure/middleware/error.middleware';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 export class AdminService {
   private adminRepository: AdminRepository;
@@ -75,7 +79,7 @@ export class AdminService {
     password: string;
     name: string;
     dni: string;
-    phone?: string;
+    phone: string;
     commissionPercent: number;
   }, assignedBy: string) {
     return this.vendedorService.createVendedor(data, assignedBy);
@@ -86,7 +90,7 @@ export class AdminService {
     password: string;
     name: string;
     dni: string;
-    phone?: string;
+    phone: string;
   }, assignedBy: string) {
     return this.porteroService.createPortero(data, assignedBy);
   }
@@ -154,6 +158,56 @@ export class AdminService {
     const excelBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
 
     return excelBuffer;
+  }
+
+  async getTrackingConfig(userId: string) {
+    let config = await prisma.trackingConfig.findUnique({
+      where: { userId },
+    });
+
+    // Si no existe, crear una configuración por defecto
+    if (!config) {
+      config = await prisma.trackingConfig.create({
+        data: {
+          userId,
+          metaPixelId: null,
+          googleAdsId: null,
+        },
+      });
+    }
+
+    return {
+      metaPixelId: config.metaPixelId,
+      googleAdsId: config.googleAdsId,
+    };
+  }
+
+  async updateTrackingConfig(userId: string, data: { metaPixelId?: string; googleAdsId?: string }) {
+    const config = await prisma.trackingConfig.upsert({
+      where: { userId },
+      update: {
+        metaPixelId: data.metaPixelId !== undefined ? data.metaPixelId : undefined,
+        googleAdsId: data.googleAdsId !== undefined ? data.googleAdsId : undefined,
+      },
+      create: {
+        userId,
+        metaPixelId: data.metaPixelId || null,
+        googleAdsId: data.googleAdsId || null,
+      },
+    });
+
+    return {
+      metaPixelId: config.metaPixelId,
+      googleAdsId: config.googleAdsId,
+    };
+  }
+
+  async getAccountingConfig(userId: string) {
+    return AccountingService.getConfig(userId);
+  }
+
+  async updateAccountingConfig(userId: string, data: any) {
+    return AccountingService.updateConfig(userId, data);
   }
 }
 

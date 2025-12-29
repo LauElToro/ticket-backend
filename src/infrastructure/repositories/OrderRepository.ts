@@ -1,5 +1,6 @@
 import { prisma } from '../database/prisma';
 import { TicketRepository } from './TicketRepository';
+import { Decimal } from '@prisma/client';
 
 export class OrderRepository {
   private ticketRepository: TicketRepository;
@@ -10,6 +11,56 @@ export class OrderRepository {
 
   async create(data: any, userId: string) {
     const { eventId, tickets, paymentMethod, referidoId } = data;
+
+    // Obtener el evento con sus tandas para calcular precios
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      include: {
+        tandas: {
+          where: { isActive: true },
+          include: {
+            tandaTicketTypes: {
+              include: {
+                ticketType: true,
+              },
+            },
+          },
+          orderBy: {
+            startDate: 'asc',
+          },
+        },
+        ticketTypes: true,
+      },
+    });
+
+    if (!event) {
+      throw new Error('Evento no encontrado');
+    }
+
+    // Encontrar la tanda activa (la que está en el rango de fechas actual)
+    const now = new Date();
+    let activeTanda = event.tandas.find((tanda) => {
+      const startDate = tanda.startDate ? new Date(tanda.startDate) : null;
+      const endDate = tanda.endDate ? new Date(tanda.endDate) : null;
+      
+      if (startDate && endDate) {
+        return now >= startDate && now <= endDate;
+      } else if (startDate) {
+        return now >= startDate;
+      } else if (endDate) {
+        return now <= endDate;
+      }
+      return true; // Si no tiene fechas, considerar activa si isActive es true
+    });
+
+    // Si no hay tanda activa, usar la primera tanda activa o la primera disponible
+    if (!activeTanda) {
+      activeTanda = event.tandas.find((t) => t.isActive) || event.tandas[0];
+    }
+
+    if (!activeTanda) {
+      throw new Error('No hay tandas activas para este evento');
+    }
 
     // Calcular total
     let totalAmount = 0;
@@ -28,7 +79,21 @@ export class OrderRepository {
         throw new Error(`No hay suficientes entradas disponibles para ${ticketType.name}`);
       }
 
-      totalAmount += Number(ticketType.price) * ticket.quantity;
+      // Obtener el precio desde la tanda activa
+      const tandaTicketType = activeTanda.tandaTicketTypes.find(
+        (ttt) => ttt.ticketTypeId === ticket.ticketTypeId
+      );
+
+      if (!tandaTicketType) {
+        throw new Error(`No se encontró precio para ${ticketType.name} en la tanda activa`);
+      }
+
+      const price = Number(tandaTicketType.price);
+      if (isNaN(price) || price <= 0) {
+        throw new Error(`Precio inválido para ${ticketType.name}`);
+      }
+
+      totalAmount += price * ticket.quantity;
       ticketTypesData.push({
         ticketTypeId: ticket.ticketTypeId,
         quantity: ticket.quantity,
@@ -76,12 +141,17 @@ export class OrderRepository {
       }
     }
 
+    // Validar que totalAmount sea válido
+    if (isNaN(totalAmount) || totalAmount <= 0) {
+      throw new Error(`Total inválido: ${totalAmount}`);
+    }
+
     // Crear la orden
     const order = await prisma.order.create({
       data: {
         userId,
         eventId,
-        totalAmount,
+        totalAmount: new Decimal(totalAmount),
         paymentMethod,
         paymentStatus: 'PENDING',
         reservedUntil: isCashPayment 
