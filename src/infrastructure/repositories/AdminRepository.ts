@@ -635,23 +635,46 @@ export class AdminRepository {
   }
 
   async deleteEvent(id: string, userId: string) {
-    // Verificar si el evento ya pasó
+    // Verificar si el evento existe y obtener información relevante
     const event = await prisma.event.findUnique({
       where: { id },
-      select: { date: true },
+      select: { 
+        date: true,
+        organizerId: true,
+      },
     });
 
     if (!event) {
       throw new Error('Evento no encontrado');
     }
 
-    // Si el evento ya pasó, no se puede borrar (solo desactivar)
+    // Verificar permisos: si es organizador, solo puede eliminar sus propios eventos
+    const user = await prisma.user.findUnique({ 
+      where: { id: userId }, 
+      select: { role: true } 
+    });
+    const isOrganizer = user?.role === 'ORGANIZER' && user?.role !== 'ADMIN';
+    
+    if (isOrganizer && event.organizerId !== userId) {
+      throw new Error('No autorizado para eliminar este evento');
+    }
+
+    // Verificar si hay órdenes asociadas al evento
+    const ordersCount = await prisma.order.count({
+      where: { eventId: id },
+    });
+
+    if (ordersCount > 0) {
+      throw new Error('No se puede eliminar un evento que tiene órdenes asociadas. Solo se puede desactivar.');
+    }
+
+    // Verificar si el evento ya pasó
     const now = new Date();
     if (event.date < now) {
       throw new Error('No se puede borrar un evento que ya pasó. Solo se puede desactivar.');
     }
 
-    // Si el evento no ha pasado, se puede borrar físicamente
+    // Si el evento no ha pasado y no tiene órdenes, se puede borrar físicamente
     return prisma.event.delete({
       where: { id },
     });

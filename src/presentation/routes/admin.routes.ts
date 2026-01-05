@@ -46,5 +46,8 @@ router.put('/tracking-config', adminController.updateTrackingConfig.bind(adminCo
 router.get('/accounting-config', adminController.getAccountingConfig.bind(adminController));
 router.put('/accounting-config', adminController.updateAccountingConfig.bind(adminController));
 
+// Regalar entradas por email
+router.post('/tickets/gift', adminController.giftTicketsByEmail.bind(adminController));
+
 export { router as adminRoutes };
 

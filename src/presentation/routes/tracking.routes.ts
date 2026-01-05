@@ -19,3 +19,5 @@ router.get('/all', trackingController.getAllMetrics.bind(trackingController));
 
 export { router as trackingRoutes };
 
+
+

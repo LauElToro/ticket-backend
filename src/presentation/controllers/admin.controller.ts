@@ -296,5 +296,18 @@ export class AdminController {
       next(error);
     }
   }
+
+  async giftTicketsByEmail(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      const result = await this.adminService.giftTicketsByEmail(req.body, userId);
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 

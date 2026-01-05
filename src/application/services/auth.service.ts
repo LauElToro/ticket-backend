@@ -182,5 +182,86 @@ export class AuthService {
     }
     return qrData;
   }
+
+  /**
+   * Completa el registro de un usuario creado automáticamente (por regalo de entradas)
+   */
+  async completeGiftRegistration(token: string, data: {
+    password: string;
+    dni: string;
+    phone: string;
+    name?: string;
+  }) {
+    // Obtener datos del token
+    const tokenData = await redisClient.get(`gift-registration:${token}`);
+    if (!tokenData) {
+      throw new AppError('Token de registro inválido o expirado', 400, 'INVALID_REGISTRATION_TOKEN');
+    }
+
+    const { userId, email } = JSON.parse(tokenData);
+
+    // Verificar que el usuario existe
+    const user = await this.userRepository.findById(userId);
+    if (!user) {
+      throw new AppError('Usuario no encontrado', 404, 'USER_NOT_FOUND');
+    }
+
+    // Validar DNI único
+    const existingDni = await this.userRepository.findByDni(data.dni);
+    if (existingDni && existingDni.id !== userId) {
+      throw new AppError('El DNI ya está registrado', 409, 'DNI_ALREADY_EXISTS');
+    }
+
+    // Validar contraseña
+    if (data.password.length < 6) {
+      throw new AppError('La contraseña debe tener al menos 6 caracteres', 400, 'INVALID_PASSWORD');
+    }
+
+    // Hash de contraseña
+    const hashedPassword = await this.passwordService.hash(data.password);
+
+    // Actualizar usuario con los datos completos
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        password: hashedPassword,
+        dni: data.dni,
+        phone: data.phone,
+        name: data.name || user.name,
+        emailVerified: true, // Marcar como verificado al completar el registro
+      },
+    });
+
+    // Eliminar el token
+    await redisClient.del(`gift-registration:${token}`);
+
+    // Generar tokens de sesión
+    const updatedUser = await this.userRepository.findById(userId);
+    if (!updatedUser) {
+      throw new AppError('Error al actualizar el usuario', 500, 'UPDATE_ERROR');
+    }
+
+    const accessToken = this.jwtService.generateAccessToken(updatedUser);
+    const refreshToken = this.jwtService.generateRefreshToken(updatedUser);
+
+    // Guardar refresh token en Redis
+    await redisClient.setEx(
+      `refresh-token:${refreshToken}`,
+      7 * 24 * 60 * 60, // 7 días
+      updatedUser.id
+    );
+
+    return {
+      user: {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        name: updatedUser.name,
+        role: updatedUser.role,
+        emailVerified: true,
+      },
+      token: accessToken,
+      refreshToken,
+    };
+  }
 }
 

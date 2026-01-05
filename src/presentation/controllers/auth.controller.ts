@@ -109,5 +109,26 @@ export class AuthController {
       next(error);
     }
   }
+
+  async completeGiftRegistration(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { token, password, dni, phone, name } = req.body;
+      if (!token || !password || !dni || !phone) {
+        throw new AppError('Faltan campos requeridos', 400, 'MISSING_FIELDS');
+      }
+      const result = await this.authService.completeGiftRegistration(token, {
+        password,
+        dni,
+        phone,
+        name,
+      });
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
