@@ -74,6 +74,9 @@ export class AuthService {
   }
 
   async login(email: string, password: string) {
+    if (!email || !password) {
+      throw new AppError('Email y contraseña son requeridos', 400, 'VALIDATION_ERROR');
+    }
     const user = await this.userRepository.findByEmail(email);
     if (!user) {
       throw new AppError('Credenciales inválidas', 401, 'INVALID_CREDENTIALS');

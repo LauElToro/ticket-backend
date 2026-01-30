@@ -35,8 +35,9 @@ export class AuthController {
 
   async refresh(req: Request, res: Response, next: NextFunction) {
     try {
-      const refreshToken = req.body.refreshToken || req.headers['x-refresh-token'];
-      if (!refreshToken) {
+      const raw = req.body?.refreshToken ?? req.headers['x-refresh-token'];
+      const refreshToken = Array.isArray(raw) ? raw[0] : raw;
+      if (!refreshToken || typeof refreshToken !== 'string') {
         throw new AppError('Refresh token requerido', 400, 'REFRESH_TOKEN_REQUIRED');
       }
       const result = await this.authService.refreshToken(refreshToken);
@@ -51,7 +52,11 @@ export class AuthController {
 
   async verifyEmail(req: Request, res: Response, next: NextFunction) {
     try {
-      await this.authService.verifyEmail(req.body.token);
+      const token = req.body?.token;
+      if (!token) {
+        throw new AppError('Token de verificación requerido', 400, 'VALIDATION_ERROR');
+      }
+      await this.authService.verifyEmail(token);
       res.json({
         success: true,
         message: 'Email verificado exitosamente',
