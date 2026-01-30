@@ -29,6 +29,35 @@ import path from 'path';
 
 const app = express();
 
+// OPTIONS (preflight) lo respondemos primero con CORS para que nunca falle por falta de headers
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:3000',
+  'https://ticket-laueltoro.netlify.app',
+  config.frontendUrl,
+].filter(Boolean);
+
+app.use((req, res, next) => {
+  const origin = req.get('Origin');
+  const allowed =
+    origin &&
+    (allowedOrigins.includes(origin) ||
+      origin.endsWith('.netlify.app') ||
+      (config.nodeEnv === 'development' && origin.startsWith('http://localhost')));
+  if (allowed) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Refresh-Token');
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+  next();
+});
+
 // Conectar a base de datos, Redis y sincronizar admin desde env (Vercel)
 async function startServer() {
   try {

@@ -1,6 +1,23 @@
 import { Request, Response, NextFunction } from 'express';
 import { logger } from '../logger';
 import { ZodError } from 'zod';
+import { config } from '../config';
+
+function setCorsHeaders(req: Request, res: Response): void {
+  const origin = req.get('Origin');
+  const allowed =
+    origin &&
+    (origin.endsWith('.netlify.app') ||
+      origin.startsWith('http://localhost') ||
+      origin.startsWith('http://127.0.0.1') ||
+      origin === config.frontendUrl);
+  if (allowed) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Refresh-Token');
+}
 
 export function errorHandler(
   err: Error & { statusCode?: number; code?: string; details?: any },
@@ -30,6 +47,7 @@ export function errorHandler(
     method: req.method,
   });
 
+  setCorsHeaders(req, res);
   res.status(statusCode).json({
     success: false,
     error: {
