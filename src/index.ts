@@ -44,29 +44,32 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
-// CORS configurado para desarrollo local
+// CORS: permitir frontend en local, Netlify y la URL configurada en FRONTEND_URL
 const corsOptions = {
   origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
     // Permitir requests sin origin (mobile apps, Postman, etc.)
     if (!origin) return callback(null, true);
-    
+
     const allowedOrigins = [
       'http://localhost:5173',
       'http://localhost:3000',
       'http://127.0.0.1:5173',
       'http://127.0.0.1:3000',
+      'https://ticket-laueltoro.netlify.app',
       config.frontendUrl,
-    ];
-    
-    if (config.nodeEnv === 'development' || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('No permitido por CORS'));
-    }
+    ].filter(Boolean);
+
+    const isAllowed =
+      allowedOrigins.includes(origin) ||
+      origin.endsWith('.netlify.app') ||
+      (config.nodeEnv === 'development' && origin.startsWith('http://localhost'));
+
+    callback(null, isAllowed);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Refresh-Token'],
+  optionsSuccessStatus: 204,
 };
 
 app.use(cors(corsOptions));
