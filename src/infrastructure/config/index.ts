@@ -9,6 +9,8 @@ export const config = {
 
   database: {
     url: process.env.DATABASE_URL || '',
+    /** En Vercel/producción usar Prisma Accelerate (PRISMA_DATABASE_URL); en local puede ser igual a DATABASE_URL */
+    prismaUrl: process.env.PRISMA_DATABASE_URL || process.env.DATABASE_URL || '',
   },
 
   redis: {
@@ -61,6 +63,7 @@ export const config = {
 // Validar variables críticas
 const requiredVars = [
   'DATABASE_URL',
+  'PRISMA_DATABASE_URL',
   'JWT_SECRET',
   'JWT_REFRESH_SECRET',
   'QR_SECRET_KEY',

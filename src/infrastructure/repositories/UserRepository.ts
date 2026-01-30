@@ -101,7 +101,7 @@ export class UserRepository implements IUserRepository {
       where: { id },
       data: {
         ...(data.name && { name: data.name }),
-        ...(data.phone !== undefined && { phone: data.phone }),
+        ...(data.phone !== undefined && data.phone !== null && { phone: data.phone }),
         ...(data.role && { role: data.role }),
       },
     });

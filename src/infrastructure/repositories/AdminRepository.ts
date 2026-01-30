@@ -137,7 +137,7 @@ export class AdminRepository {
       ? await prisma.user.findUnique({ where: { id: userId }, select: { role: true } })
       : null;
     
-    const isOrganizer = user?.role === 'ORGANIZER' && user?.role !== 'ADMIN';
+    const isOrganizer = user?.role === 'ORGANIZER';
 
     const event = await prisma.event.findUnique({
       where: { id },
@@ -183,7 +183,7 @@ export class AdminRepository {
       ? await prisma.user.findUnique({ where: { id: userId }, select: { role: true } })
       : null;
     
-    const isOrganizer = user?.role === 'ORGANIZER' && user?.role !== 'ADMIN';
+    const isOrganizer = user?.role === 'ORGANIZER';
 
     const page = parseInt(query.page || '1', 10);
     const limit = parseInt(query.limit || '20', 10);
@@ -406,7 +406,7 @@ export class AdminRepository {
     }
 
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
-    const isOrganizer = user?.role === 'ORGANIZER' && user?.role !== 'ADMIN';
+    const isOrganizer = user?.role === 'ORGANIZER';
     
     if (isOrganizer && existingEvent.organizerId !== userId) {
       throw new Error('No autorizado para editar este evento');
@@ -653,7 +653,7 @@ export class AdminRepository {
       where: { id: userId }, 
       select: { role: true } 
     });
-    const isOrganizer = user?.role === 'ORGANIZER' && user?.role !== 'ADMIN';
+    const isOrganizer = user?.role === 'ORGANIZER';
     
     if (isOrganizer && event.organizerId !== userId) {
       throw new Error('No autorizado para eliminar este evento');

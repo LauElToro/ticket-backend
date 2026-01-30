@@ -1,6 +1,6 @@
 import { prisma } from '../database/prisma';
 import { TicketRepository } from './TicketRepository';
-import { Decimal } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 export class OrderRepository {
   private ticketRepository: TicketRepository;
@@ -151,7 +151,7 @@ export class OrderRepository {
       data: {
         userId,
         eventId,
-        totalAmount: new Decimal(totalAmount),
+        totalAmount: new Prisma.Decimal(totalAmount),
         paymentMethod,
         paymentStatus: 'PENDING',
         reservedUntil: isCashPayment 

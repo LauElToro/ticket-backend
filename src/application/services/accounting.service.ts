@@ -1,4 +1,4 @@
-import { PrismaClient, Decimal } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -25,12 +25,12 @@ export class AccountingService {
       config = await prisma.accountingConfig.create({
         data: {
           userId,
-          profitMargin: new Decimal(0),
-          fixedCosts: new Decimal(0),
-          variableCostsPercent: new Decimal(0),
-          taxesPercent: new Decimal(0),
-          commissionsPercent: new Decimal(0),
-          platformFeePercent: new Decimal(0),
+          profitMargin: new Prisma.Decimal(0),
+          fixedCosts: new Prisma.Decimal(0),
+          variableCostsPercent: new Prisma.Decimal(0),
+          taxesPercent: new Prisma.Decimal(0),
+          commissionsPercent: new Prisma.Decimal(0),
+          platformFeePercent: new Prisma.Decimal(0),
         },
       });
     }
@@ -52,21 +52,21 @@ export class AccountingService {
     const config = await prisma.accountingConfig.upsert({
       where: { userId },
       update: {
-        profitMargin: new Decimal(data.profitMargin),
-        fixedCosts: new Decimal(data.fixedCosts),
-        variableCostsPercent: new Decimal(data.variableCostsPercent),
-        taxesPercent: new Decimal(data.taxesPercent),
-        commissionsPercent: new Decimal(data.commissionsPercent),
-        platformFeePercent: new Decimal(data.platformFeePercent),
+        profitMargin: new Prisma.Decimal(data.profitMargin),
+        fixedCosts: new Prisma.Decimal(data.fixedCosts),
+        variableCostsPercent: new Prisma.Decimal(data.variableCostsPercent),
+        taxesPercent: new Prisma.Decimal(data.taxesPercent),
+        commissionsPercent: new Prisma.Decimal(data.commissionsPercent),
+        platformFeePercent: new Prisma.Decimal(data.platformFeePercent),
       },
       create: {
         userId,
-        profitMargin: new Decimal(data.profitMargin),
-        fixedCosts: new Decimal(data.fixedCosts),
-        variableCostsPercent: new Decimal(data.variableCostsPercent),
-        taxesPercent: new Decimal(data.taxesPercent),
-        commissionsPercent: new Decimal(data.commissionsPercent),
-        platformFeePercent: new Decimal(data.platformFeePercent),
+        profitMargin: new Prisma.Decimal(data.profitMargin),
+        fixedCosts: new Prisma.Decimal(data.fixedCosts),
+        variableCostsPercent: new Prisma.Decimal(data.variableCostsPercent),
+        taxesPercent: new Prisma.Decimal(data.taxesPercent),
+        commissionsPercent: new Prisma.Decimal(data.commissionsPercent),
+        platformFeePercent: new Prisma.Decimal(data.platformFeePercent),
       },
     });
 

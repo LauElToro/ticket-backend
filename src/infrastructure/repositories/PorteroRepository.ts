@@ -96,11 +96,6 @@ export class PorteroRepository {
             email: true,
           },
         },
-        _count: {
-          select: {
-            scans: true,
-          },
-        },
       },
       orderBy: {
         createdAt: 'desc',

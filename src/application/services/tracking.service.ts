@@ -1,4 +1,4 @@
-import { PrismaClient, Decimal } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import axios from 'axios';
 
 const prisma = new PrismaClient();

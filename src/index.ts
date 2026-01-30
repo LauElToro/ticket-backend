@@ -106,13 +106,15 @@ app.use('/api/tracking', trackingRoutes);
 // Error handler
 app.use(errorHandler);
 
-// Iniciar servidor
+// Iniciar servidor (en Vercel no hacemos listen, solo exportamos el app)
 const PORT = config.port || 3000;
 
 startServer().then(() => {
-  // Iniciar job de expiración de tickets
+  if (process.env.VERCEL) {
+    logger.info('Running on Vercel (serverless)');
+    return;
+  }
   startTicketExpirationJob();
-  
   app.listen(PORT, () => {
     logger.info(`🚀 Servidor iniciado en puerto ${PORT}`);
     logger.info(`📝 Ambiente: ${config.nodeEnv}`);

@@ -61,6 +61,7 @@ export class PaymentService {
       });
 
       // Actualizar la orden con el paymentId
+      if (!preference.id) throw new Error('MercadoPago no devolvió ID de preferencia');
       await this.orderRepository.updatePaymentId(data.orderId, preference.id);
 
       logger.info('Preferencia de MercadoPago creada', {
