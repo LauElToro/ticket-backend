@@ -107,6 +107,10 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+
+// Upload debe ir ANTES de express.json/urlencoded para que multer reciba el body multipart sin consumir
+app.use('/api/upload', uploadRoutes);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -131,7 +135,6 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/transfers', transferRoutes);
 app.use('/api/validation', validationRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/upload', uploadRoutes);
 app.use('/api/payment-places', paymentPlacesRoutes);
 app.use('/api/favorites', favoriteRoutes);
 app.use('/api/payments', paymentRoutes);

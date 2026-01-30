@@ -35,11 +35,12 @@ const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilt
   cb(new Error('Solo se permiten imágenes (JPEG, JPG, PNG, WEBP, GIF)'));
 };
 
+// Vercel tiene límite 4.5 MB en el body; dejamos 4 MB para el archivo
+const maxFileSize = isVercel ? 4 * 1024 * 1024 : 5 * 1024 * 1024;
+
 export const upload = multer({
   storage: isVercel ? memoryStorage : diskStorage,
-  limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB
-  },
+  limits: { fileSize: maxFileSize },
   fileFilter,
 });
 
