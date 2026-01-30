@@ -70,6 +70,14 @@ export const config = {
       accountHolder: process.env.PAYMENT_ACCOUNT_HOLDER || 'Ticket-Ya S.A.',
     },
   },
+
+  /** Vercel Blob Storage (imágenes de eventos). El SDK usa BLOB_READ_WRITE_TOKEN; baseUrl/storeId son de referencia. */
+  blob: {
+    storeId: process.env.BLOB_STORE_ID || 'store_iuW1gnctN1Hxzcnx',
+    baseUrl: process.env.BLOB_STORE_BASE_URL || 'https://iuw1gnctn1hxzcnx.public.blob.vercel-storage.com',
+    /** Token de escritura/lectura; lo asigna Vercel al conectar el Blob al proyecto. */
+    token: process.env.BLOB_READ_WRITE_TOKEN || '',
+  },
 };
 
 // Validar variables críticas

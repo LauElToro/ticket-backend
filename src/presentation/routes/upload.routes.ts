@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { put } from '@vercel/blob';
 import path from 'path';
 import multer from 'multer';
+import { config } from '../../infrastructure/config';
 import { uploadSingle } from '../../infrastructure/middleware/upload.middleware';
 import { authMiddleware, requireRole } from '../../infrastructure/middleware/auth.middleware';
 import { AppError } from '../../infrastructure/middleware/error.middleware';
@@ -48,7 +49,7 @@ router.post('/image', uploadSingleSafe, async (req, res, next) => {
           'BLOB_NOT_CONFIGURED'
         );
       }
-      if (!process.env.BLOB_READ_WRITE_TOKEN) {
+      if (!config.blob.token) {
         throw new AppError(
           'Variable BLOB_READ_WRITE_TOKEN no configurada. Añade Blob Storage en Vercel (Storage → Create → Blob).',
           503,
@@ -60,6 +61,7 @@ router.post('/image', uploadSingleSafe, async (req, res, next) => {
       const blob = await put(pathname, buffer, {
         contentType: file.mimetype || 'image/png',
         access: 'public',
+        token: config.blob.token,
       });
       return res.json({
         success: true,
@@ -82,6 +84,41 @@ router.post('/image', uploadSingleSafe, async (req, res, next) => {
         url: `/uploads/${filename}`,
         filename,
         size: file.size,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * Subida directa como en la guía de Vercel Blob: body = archivo (stream).
+ * Evita multipart y límites de multer. Máx 4.5 MB (límite de Vercel).
+ */
+router.post('/image-raw', async (req, res, next) => {
+  try {
+    if (!config.blob.token) {
+      throw new AppError(
+        'Variable BLOB_READ_WRITE_TOKEN no configurada. Añade Blob Storage en Vercel (store: ' + config.blob.storeId + ').',
+        503,
+        'BLOB_NOT_CONFIGURED'
+      );
+    }
+    const filename = (req.query.filename as string) || `event-${Date.now()}.png`;
+    const pathname = `events/${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(filename) || '.png'}`;
+    const contentType = req.get('Content-Type') || 'image/png';
+
+    const blob = await put(pathname, req, {
+      access: 'public',
+      contentType,
+      token: config.blob.token,
+    });
+
+    res.json({
+      success: true,
+      data: {
+        url: blob.url,
+        filename: path.basename(blob.pathname),
       },
     });
   } catch (error) {
