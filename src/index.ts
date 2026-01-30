@@ -6,6 +6,7 @@ import { config } from './infrastructure/config';
 import { logger } from './infrastructure/logger';
 import { connectDatabase } from './infrastructure/database/prisma';
 import { connectRedis } from './infrastructure/redis/client';
+import { syncAdminFromEnv } from './infrastructure/admin-sync';
 import { errorHandler } from './infrastructure/middleware/error.middleware';
 import { authRoutes } from './presentation/routes/auth.routes';
 import { eventRoutes } from './presentation/routes/event.routes';
@@ -28,11 +29,12 @@ import path from 'path';
 
 const app = express();
 
-// Conectar a base de datos y Redis
+// Conectar a base de datos, Redis y sincronizar admin desde env (Vercel)
 async function startServer() {
   try {
     await connectDatabase();
     await connectRedis();
+    await syncAdminFromEnv();
   } catch (error) {
     logger.error('Error iniciando servicios:', error);
     process.exit(1);
