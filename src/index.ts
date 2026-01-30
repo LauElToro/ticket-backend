@@ -46,10 +46,7 @@ app.use(helmet({
 
 // CORS: permitir frontend en local, Netlify y la URL configurada en FRONTEND_URL
 const corsOptions = {
-  origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
-    // Permitir requests sin origin (mobile apps, Postman, etc.)
-    if (!origin) return callback(null, true);
-
+  origin: function (origin: string | undefined, callback: (err: Error | null, origin?: string | boolean) => void) {
     const allowedOrigins = [
       'http://localhost:5173',
       'http://localhost:3000',
@@ -59,12 +56,18 @@ const corsOptions = {
       config.frontendUrl,
     ].filter(Boolean);
 
+    // Sin origin (Postman, etc.): en dev permitir; en prod rechazar para no usar wildcard con credentials
+    if (!origin) {
+      return callback(null, config.nodeEnv === 'development');
+    }
+
     const isAllowed =
       allowedOrigins.includes(origin) ||
       origin.endsWith('.netlify.app') ||
       (config.nodeEnv === 'development' && origin.startsWith('http://localhost'));
 
-    callback(null, isAllowed);
+    // Con credentials: true hay que devolver el origen exacto, no true (evita wildcard *)
+    callback(null, isAllowed ? origin : false);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
