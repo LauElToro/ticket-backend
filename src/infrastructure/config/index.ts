@@ -14,7 +14,19 @@ export const config = {
   },
 
   redis: {
-    url: process.env.REDIS_URL || 'redis://localhost:6379',
+    /** URL válida de Redis, o vacío si no está configurado (ej. placeholder de Vercel "database_provisioning_in_progress") */
+    url: (() => {
+      const raw = (process.env.REDIS_URL || 'redis://localhost:6379').trim().replace(/^["']|["']$/g, '');
+      if (!raw || raw.includes('provisioning') || (!raw.startsWith('redis://') && !raw.startsWith('rediss://'))) {
+        return '';
+      }
+      try {
+        new URL(raw);
+        return raw;
+      } catch {
+        return '';
+      }
+    })(),
   },
 
   jwt: {
