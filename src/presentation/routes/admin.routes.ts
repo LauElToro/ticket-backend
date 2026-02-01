@@ -17,6 +17,12 @@ router.get('/events/:id', adminController.getEventById.bind(adminController));
 router.post('/events', adminController.createEvent.bind(adminController));
 router.put('/events/:id', adminController.updateEvent.bind(adminController));
 router.delete('/events/:id', adminController.deleteEvent.bind(adminController));
+router.post('/events/:id/clone', adminController.cloneEvent.bind(adminController));
+router.get('/events/:id/validations', adminController.getEventValidations.bind(adminController));
+router.get('/events/:id/promoCodes', adminController.getPromoCodes.bind(adminController));
+router.post('/events/:id/promoCodes', adminController.createPromoCode.bind(adminController));
+router.put('/events/:id/promoCodes/:promoId', adminController.updatePromoCode.bind(adminController));
+router.delete('/events/:id/promoCodes/:promoId', adminController.deletePromoCode.bind(adminController));
 
 // Usuarios
 router.get('/users', adminController.getUsers.bind(adminController));

@@ -52,6 +52,30 @@ export class AdminService {
     return this.adminRepository.deleteEvent(id, userId);
   }
 
+  async cloneEvent(eventId: string, userId: string) {
+    return this.adminRepository.cloneEvent(eventId, userId);
+  }
+
+  async getEventValidations(eventId: string, userId: string) {
+    return this.adminRepository.getEventValidations(eventId, userId);
+  }
+
+  async getPromoCodes(eventId: string, userId: string) {
+    return this.adminRepository.getPromoCodes(eventId, userId);
+  }
+
+  async createPromoCode(eventId: string, data: any, userId: string) {
+    return this.adminRepository.createPromoCode(eventId, data, userId);
+  }
+
+  async updatePromoCode(promoId: string, data: any, userId: string) {
+    return this.adminRepository.updatePromoCode(promoId, data, userId);
+  }
+
+  async deletePromoCode(promoId: string, userId: string) {
+    return this.adminRepository.deletePromoCode(promoId, userId);
+  }
+
   async getUsers(query: any) {
     return this.adminRepository.getUsers(query);
   }

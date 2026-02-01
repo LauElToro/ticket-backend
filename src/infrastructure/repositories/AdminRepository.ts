@@ -132,6 +132,193 @@ export class AdminRepository {
     };
   }
 
+  async cloneEvent(eventId: string, userId: string) {
+    const original = await prisma.event.findUnique({
+      where: { id: eventId },
+      include: {
+        ticketTypes: true,
+        tandas: {
+          include: {
+            tandaTicketTypes: {
+              include: { ticketType: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!original) throw new Error('Evento no encontrado');
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    const isOrganizer = user?.role === 'ORGANIZER';
+    if (isOrganizer && original.organizerId !== userId) {
+      throw new Error('No autorizado para clonar este evento');
+    }
+
+    const { randomBytes } = await import('crypto');
+    const privateLink = original.isPublic ? null : randomBytes(8).toString('hex');
+    const newDate = new Date(original.date);
+    newDate.setDate(newDate.getDate() + 1);
+
+    const newEvent = await prisma.event.create({
+      data: {
+        title: `${original.title} (Copia)`,
+        subtitle: original.subtitle,
+        description: original.description,
+        image: original.image,
+        category: original.category,
+        date: newDate,
+        time: original.time,
+        venue: original.venue,
+        address: original.address,
+        city: original.city,
+        latitude: original.latitude,
+        longitude: original.longitude,
+        organizerId: userId,
+        isActive: true,
+        isPublic: original.isPublic,
+        privateLink,
+        metaPixelId: original.metaPixelId,
+        googleAdsId: original.googleAdsId,
+      },
+    });
+
+    const ttIdMap: Record<string, string> = {};
+    for (const tt of original.ticketTypes) {
+      const created = await prisma.ticketType.create({
+        data: {
+          eventId: newEvent.id,
+          name: tt.name,
+          totalQty: tt.totalQty,
+          soldQty: 0,
+          availableQty: tt.totalQty,
+        },
+      });
+      ttIdMap[tt.id] = created.id;
+    }
+
+    for (const tanda of original.tandas) {
+      const newTanda = await prisma.tanda.create({
+        data: {
+          eventId: newEvent.id,
+          name: tanda.name,
+          startDate: tanda.startDate,
+          endDate: tanda.endDate,
+          isActive: true,
+        },
+      });
+      for (const ttt of tanda.tandaTicketTypes) {
+        const newTtId = ttIdMap[ttt.ticketTypeId];
+        if (newTtId) {
+          await prisma.tandaTicketType.create({
+            data: {
+              tandaId: newTanda.id,
+              ticketTypeId: newTtId,
+              price: ttt.price,
+              quantity: ttt.quantity,
+              soldQty: 0,
+              availableQty: ttt.quantity,
+            },
+          });
+        }
+      }
+    }
+
+    return prisma.event.findUnique({
+      where: { id: newEvent.id },
+      include: {
+        ticketTypes: true,
+        tandas: { include: { tandaTicketTypes: true } },
+      },
+    });
+  }
+
+  async getEventValidations(eventId: string, userId: string) {
+    const event = await prisma.event.findUnique({ where: { id: eventId }, select: { organizerId: true } });
+    if (!event) throw new Error('Evento no encontrado');
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    const isOrganizer = user?.role === 'ORGANIZER';
+    if (isOrganizer && event.organizerId !== userId) {
+      throw new Error('No autorizado');
+    }
+    return prisma.ticketValidation.findMany({
+      where: { ticket: { eventId } },
+      include: {
+        ticket: {
+          include: {
+            ticketType: true,
+            owner: { select: { name: true, email: true } },
+          },
+        },
+        validator: { select: { name: true } },
+      },
+      orderBy: { scannedAt: 'desc' },
+      take: 500,
+    });
+  }
+
+  async getPromoCodes(eventId: string, userId: string) {
+    const event = await prisma.event.findUnique({ where: { id: eventId }, select: { organizerId: true } });
+    if (!event) throw new Error('Evento no encontrado');
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    const isOrganizer = user?.role === 'ORGANIZER';
+    if (isOrganizer && event.organizerId !== userId) throw new Error('No autorizado');
+    return prisma.promoCode.findMany({
+      where: { eventId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async createPromoCode(eventId: string, data: any, userId: string) {
+    const event = await prisma.event.findUnique({ where: { id: eventId }, select: { organizerId: true } });
+    if (!event) throw new Error('Evento no encontrado');
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    const isOrganizer = user?.role === 'ORGANIZER';
+    if (isOrganizer && event.organizerId !== userId) throw new Error('No autorizado');
+    const code = String(data.code || '').toUpperCase().trim();
+    if (!code) throw new Error('El código es requerido');
+    const existing = await prisma.promoCode.findUnique({ where: { eventId_code: { eventId, code } } });
+    if (existing) throw new Error('Ya existe un código con ese nombre para este evento');
+    return prisma.promoCode.create({
+      data: {
+        eventId,
+        code,
+        discountType: data.discountType || 'PERCENT',
+        discountValue: parseFloat(String(data.discountValue || 0)),
+        maxUses: parseInt(String(data.maxUses || 0)) || 0,
+        validFrom: data.validFrom ? new Date(data.validFrom) : null,
+        validUntil: data.validUntil ? new Date(data.validUntil) : null,
+      },
+    });
+  }
+
+  async updatePromoCode(promoId: string, data: any, userId: string) {
+    const promo = await prisma.promoCode.findUnique({ where: { id: promoId }, include: { event: true } });
+    if (!promo) throw new Error('Código no encontrado');
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    const isOrganizer = user?.role === 'ORGANIZER';
+    if (isOrganizer && promo.event.organizerId !== userId) throw new Error('No autorizado');
+    return prisma.promoCode.update({
+      where: { id: promoId },
+      data: {
+        ...(data.discountType && { discountType: data.discountType }),
+        ...(data.discountValue !== undefined && { discountValue: parseFloat(String(data.discountValue)) }),
+        ...(data.maxUses !== undefined && { maxUses: parseInt(String(data.maxUses)) || 0 }),
+        ...(data.validFrom !== undefined && { validFrom: data.validFrom ? new Date(data.validFrom) : null }),
+        ...(data.validUntil !== undefined && { validUntil: data.validUntil ? new Date(data.validUntil) : null }),
+        ...(data.isActive !== undefined && { isActive: data.isActive }),
+      },
+    });
+  }
+
+  async deletePromoCode(promoId: string, userId: string) {
+    const promo = await prisma.promoCode.findUnique({ where: { id: promoId }, include: { event: true } });
+    if (!promo) throw new Error('Código no encontrado');
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    const isOrganizer = user?.role === 'ORGANIZER';
+    if (isOrganizer && promo.event.organizerId !== userId) throw new Error('No autorizado');
+    return prisma.promoCode.delete({ where: { id: promoId } });
+  }
+
   async getEventById(id: string, userId?: string) {
     const user = userId 
       ? await prisma.user.findUnique({ where: { id: userId }, select: { role: true } })

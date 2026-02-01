@@ -87,6 +87,7 @@ model Event {
   vendedores  VendedorEvent[]
   referidos   Referido[]
   tandas      Tanda[]
+  promoCodes  PromoCode[]
   trackingMetrics TrackingMetrics[]
 
   @@index([organizerId])
@@ -429,6 +430,28 @@ model TrackingConfig {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+// Códigos de descuento
+model PromoCode {
+  id           String   @id @default(cuid())
+  eventId      String
+  code         String   // Código que el usuario ingresa (ej: PREVENTA20)
+  discountType String   // PERCENT | FIXED
+  discountValue Decimal @db.Decimal(10, 2) // % o monto fijo
+  maxUses      Int      @default(0) // 0 = ilimitado
+  usedCount    Int      @default(0)
+  validFrom    DateTime?
+  validUntil   DateTime?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, code])
+  @@index([eventId])
+  @@index([code])
 }
 
 // Métricas de Tracking

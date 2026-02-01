@@ -86,6 +86,73 @@ export class AdminController {
     }
   }
 
+  async cloneEvent(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      const result = await this.adminService.cloneEvent(req.params.id, userId);
+      res.status(201).json({
+        success: true,
+        data: result,
+        message: 'Evento clonado correctamente',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getEventValidations(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      const result = await this.adminService.getEventValidations(req.params.id, userId);
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getPromoCodes(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      const result = await this.adminService.getPromoCodes(req.params.id, userId);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async createPromoCode(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      const result = await this.adminService.createPromoCode(req.params.id, req.body, userId);
+      res.status(201).json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async updatePromoCode(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      const result = await this.adminService.updatePromoCode(req.params.promoId, req.body, userId);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async deletePromoCode(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      await this.adminService.deletePromoCode(req.params.promoId, userId);
+      res.json({ success: true, message: 'Código eliminado' });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async getUsers(req: Request, res: Response, next: NextFunction) {
     try {
       const result = await this.adminService.getUsers(req.query);
