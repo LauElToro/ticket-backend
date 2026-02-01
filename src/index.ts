@@ -32,8 +32,11 @@ const app = express();
 // OPTIONS (preflight) lo respondemos primero con CORS para que nunca falle por falta de headers
 const allowedOrigins = [
   'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:5175',
   'http://localhost:3000',
   'http://127.0.0.1:5173',
+  'http://127.0.0.1:5174',
   'http://127.0.0.1:3000',
   'https://ticket-laueltoro.netlify.app',
   config.frontendUrl,
@@ -45,7 +48,7 @@ app.use((req, res, next) => {
     origin &&
     (allowedOrigins.includes(origin) ||
       origin.endsWith('.netlify.app') ||
-      (config.nodeEnv === 'development' && origin.startsWith('http://localhost')));
+      /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin));
   if (allowed) {
     res.setHeader('Access-Control-Allow-Origin', origin);
   }
@@ -80,8 +83,11 @@ const corsOptions = {
   origin: function (origin: string | undefined, callback: (err: Error | null, origin?: string | boolean) => void) {
     const allowedOrigins = [
       'http://localhost:5173',
+      'http://localhost:5174',
+      'http://localhost:5175',
       'http://localhost:3000',
       'http://127.0.0.1:5173',
+      'http://127.0.0.1:5174',
       'http://127.0.0.1:3000',
       'https://ticket-laueltoro.netlify.app',
       config.frontendUrl,
@@ -95,7 +101,7 @@ const corsOptions = {
     const isAllowed =
       allowedOrigins.includes(origin) ||
       origin.endsWith('.netlify.app') ||
-      (config.nodeEnv === 'development' && origin.startsWith('http://localhost'));
+      /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
 
     // Con credentials: true hay que devolver el origen exacto, no true (evita wildcard *)
     callback(null, isAllowed ? origin : false);
