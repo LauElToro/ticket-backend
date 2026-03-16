@@ -5,12 +5,14 @@ export class VendedorRepository {
     userId: string;
     assignedBy: string;
     commissionPercent: number;
+    cvuCbu?: string | null;
   }) {
     return prisma.vendedor.create({
       data: {
         userId: data.userId,
         assignedBy: data.assignedBy,
         commissionPercent: data.commissionPercent,
+        cvuCbu: data.cvuCbu ?? undefined,
       },
       include: {
         user: {

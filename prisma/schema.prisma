@@ -56,27 +56,38 @@ enum UserRole {
 
 // Eventos
 model Event {
-  id          String   @id @default(cuid())
-  title       String
-  subtitle    String?
-  description String?  @db.Text
-  image       String?
-  category    String
-  date        DateTime
-  time        String
-  venue       String
-  address     String?
-  city        String
-  latitude    Decimal? @db.Decimal(10, 8)
-  longitude   Decimal? @db.Decimal(11, 8)
-  organizerId String
-  isActive    Boolean  @default(true)
-  isPublic    Boolean  @default(true) // true = público, false = privado (solo por link)
-  privateLink String?  @unique // Link único para eventos privados
-  metaPixelId String?  // ID del Meta Pixel para tracking
-  googleAdsId String?  // ID de Google Ads para tracking
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id              String   @id @default(cuid())
+  title           String
+  subtitle        String?
+  description     String?  @db.Text
+  image           String?
+  category        String
+  date            DateTime
+  time            String
+  endDate         DateTime? // Día término del evento
+  endTime         String?   // Hora término del evento
+  venue           String
+  address         String?
+  city            String
+  region          String?   // Región/Provincia
+  country         String?   // País (ej: Argentina)
+  latitude        Decimal?  @db.Decimal(10, 8)
+  longitude       Decimal?  @db.Decimal(11, 8)
+  organizerId     String
+  isActive        Boolean   @default(true)
+  isPublic        Boolean   @default(true) // derivado de eventType para compatibilidad
+  eventType       String    @default("PUBLICO") // PUBLICO | PRIVADO | OCULTO | INACTIVO
+  eventMode       String?   // PRESENCIAL | STREAMING | MIXTO | CARTA_CONSUMO
+  ageRestriction  Boolean   @default(false)
+  minAge          Int?      // Edad mínima si ageRestriction = true (ej: 10)
+  privateLink     String?   @unique // Link único para eventos privados
+  metaPixelId       String?   // ID del Meta Pixel para tracking
+  googleAdsId       String?   // ID de Google Ads para tracking
+  authorizationCode String?   // Código de autorización (ej: 5088), generado al crear el evento
+  bannerTop         String?   // Banner superior 725x300, 1MB (solo en editar evento)
+  bannerEmail       String?   // Banner correo 650px ancho, 1MB (solo en editar evento)
+  createdAt         DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   // Relaciones
   organizer   User         @relation(fields: [organizerId], references: [id])
@@ -89,6 +100,8 @@ model Event {
   tandas      Tanda[]
   promoCodes  PromoCode[]
   trackingMetrics TrackingMetrics[]
+  cortesiaBases EventCortesiaBase[]
+  porteros     PorteroEvent[]
 
   @@index([organizerId])
   @@index([date])
@@ -99,20 +112,28 @@ model Event {
   @@index([privateLink])
 }
 
-// Tipos de Entrada
+// Tipos de Entrada (eTickets)
 model TicketType {
-  id           String   @id @default(cuid())
-  eventId      String
-  name         String
-  totalQty     Int
-  soldQty      Int      @default(0)
-  availableQty Int
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            String    @id @default(cuid())
+  eventId       String
+  name          String
+  description   String?   @db.Text
+  totalQty      Int
+  soldQty       Int       @default(0)
+  availableQty  Int
+  status        String    @default("Activo") // Activo | Agotado | Cortesia | Cerrado | Venta solo RRPP | Oculto
+  ticketKind    String?   // Presencial | Streaming | etc.
+  image         String?   // Imagen del eTicket (se envía en el mail al comprador). 500x500, 1MB
+  saleEndDate   DateTime? // Día y hora en que termina la venta de este ticket
+  saleEndTime   String?
+  validUntil    DateTime? // Los tickets serán válidos hasta
+  validUntilTime String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   // Relaciones
-  event          Event              @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  tickets        Ticket[]
+  event            Event              @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  tickets          Ticket[]
   tandaTicketTypes TandaTicketType[]
 
   @@index([eventId])
@@ -313,6 +334,7 @@ model Vendedor {
   assignedBy        String   // ID del organizador/admin que lo asignó
   assignedByUser    User     @relation("VendedorAssignedBy", fields: [assignedBy], references: [id])
   commissionPercent Decimal  @db.Decimal(5, 2) // Porcentaje de comisión (ej: 10.50)
+  cvuCbu            String?  // CVU/CBU para liquidación (opcional)
   totalEarnings     Decimal  @default(0) @db.Decimal(10, 2)
   isActive          Boolean  @default(true)
   createdAt         DateTime @default(now())
@@ -367,22 +389,38 @@ model Referido {
   @@index([customCode])
 }
 
-// Portero
+// Portero (acreditador)
 model Portero {
-  id          String   @id @default(cuid())
-  userId      String   @unique
-  assignedBy  String   // ID del organizador/admin que lo asignó
-  assignedByUser User   @relation("PorteroAssignedBy", fields: [assignedBy], references: [id])
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  assignedBy      String
+  initialPassword String?  // Contraseña visible y enviada por mail (solo para mostrar/reenviar)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  // Los escaneos se obtienen a través de la relación con User -> TicketValidation
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignedByUser User         @relation("PorteroAssignedBy", fields: [assignedBy], references: [id])
+  events         PorteroEvent[]
 
   @@index([userId])
   @@index([assignedBy])
   @@index([isActive])
+}
+
+// Asignación de porteros a eventos (qué evento puede acreditar cada portero)
+model PorteroEvent {
+  id        String   @id @default(cuid())
+  porteroId String
+  eventId   String
+  createdAt DateTime @default(now())
+
+  portero Portero @relation(fields: [porteroId], references: [id], onDelete: Cascade)
+  event   Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([porteroId, eventId])
+  @@index([porteroId])
+  @@index([eventId])
 }
 
 // Favoritos
@@ -452,6 +490,19 @@ model PromoCode {
   @@unique([eventId, code])
   @@index([eventId])
   @@index([code])
+}
+
+// Base de datos para cortesías (nombre + email por evento)
+model EventCortesiaBase {
+  id        String   @id @default(cuid())
+  eventId   String
+  name      String   // Nombre de la base (ej: "Yamba 14/02")
+  rows      Json     // Array de { name: string, email: string }
+  createdAt DateTime @default(now())
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
 }
 
 // Métricas de Tracking

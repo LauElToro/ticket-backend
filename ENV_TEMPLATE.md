@@ -10,10 +10,18 @@ Crea un archivo `.env` en la raíz del proyecto con el siguiente contenido:
 # ============================================
 # Base de Datos
 # ============================================
-# PostgreSQL - URL de conexión completa
+# PostgreSQL - URL de conexión directa (usada por migraciones y por Prisma en local)
 # Formato: postgresql://usuario:contraseña@host:puerto/nombre_db?schema=public
 # Para Docker: postgresql://ticketya:ticketya123@localhost:5432/ticketya?schema=public
 DATABASE_URL="postgresql://ticketya:ticketya123@localhost:5432/ticketya?schema=public"
+
+# En Vercel con Prisma: usar la misma URL directa para migraciones
+POSTGRES_URL="postgresql://ticketya:ticketya123@localhost:5432/ticketya?schema=public"
+
+# URL para el cliente Prisma en runtime:
+# - En local: puede ser la misma que DATABASE_URL
+# - En Vercel: usar la URL de Prisma Accelerate (prisma+postgres://accelerate.prisma-data.net/?api_key=...)
+PRISMA_DATABASE_URL="postgresql://ticketya:ticketya123@localhost:5432/ticketya?schema=public"
 
 # ============================================
 # Redis
@@ -40,6 +48,17 @@ JWT_REFRESH_EXPIRES_IN="7d"
 MERCADOPAGO_ACCESS_TOKEN="TU_ACCESS_TOKEN_DE_MERCADOPAGO"
 MERCADOPAGO_PUBLIC_KEY="TU_PUBLIC_KEY_DE_MERCADOPAGO"
 MERCADOPAGO_WEBHOOK_SECRET="TU_WEBHOOK_SECRET_DE_MERCADOPAGO"
+
+# ============================================
+# Vercel Blob Storage (imágenes de eventos)
+# ============================================
+# En Vercel: crear Blob en Storage y vincular al proyecto; se asigna BLOB_READ_WRITE_TOKEN.
+# Store actual: store_iuW1gnctN1Hxzcnx (IAD1)
+# Base URL: https://iuw1gnctn1hxzcnx.public.blob.vercel-storage.com
+BLOB_READ_WRITE_TOKEN="TU_TOKEN_DE_VERCEL_BLOB"
+# Opcionales (por defecto usan el store anterior):
+# BLOB_STORE_ID="store_iuW1gnctN1Hxzcnx"
+# BLOB_STORE_BASE_URL="https://iuw1gnctn1hxzcnx.public.blob.vercel-storage.com"
 
 # ============================================
 # Email (SMTP)
@@ -100,8 +119,30 @@ ADMIN_PASSWORD="admin123"
 Si usas Docker Compose, estos valores funcionan directamente:
 
 - `DATABASE_URL`: `postgresql://ticketya:ticketya123@localhost:5432/ticketya?schema=public`
+- `POSTGRES_URL`: igual que `DATABASE_URL`
+- `PRISMA_DATABASE_URL`: igual que `DATABASE_URL` (en local no hace falta Accelerate)
 - `REDIS_URL`: `redis://localhost:6379`
 - `FRONTEND_URL`: `http://localhost:5173`
+
+## Despliegue en Vercel (Prisma + Accelerate)
+
+En el dashboard de Vercel, en **Settings → Environment Variables**, configura:
+
+| Variable | Valor | Notas |
+|----------|--------|--------|
+| `DATABASE_URL` | `postgres://...@db.prisma.io:5432/postgres?sslmode=require` | URL directa Postgres (migraciones) |
+| `POSTGRES_URL` | Mismo que `DATABASE_URL` | Requerido por Vercel/Prisma |
+| `PRISMA_DATABASE_URL` | `prisma+postgres://accelerate.prisma-data.net/?api_key=...` | URL de Prisma Accelerate (runtime) |
+
+Además, define el resto de variables de producción: `JWT_SECRET`, `JWT_REFRESH_SECRET`, `QR_SECRET_KEY`, `FRONTEND_URL`, MercadoPago, SMTP, etc.
+
+**Migraciones:** Antes del primer deploy o tras cambiar el schema, ejecuta en local (con `DATABASE_URL` apuntando a la misma DB):
+
+```bash
+npx prisma migrate deploy
+```
+
+**Nota:** Redis en Vercel serverless puede requerir un servicio compatible (ej. Upstash). Ajusta `REDIS_URL` si usas uno.
 
 ## Generar Claves Seguras
 

@@ -86,6 +86,159 @@ export class AdminController {
     }
   }
 
+  async createTicketType(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      const result = await this.adminService.createTicketType(req.params.id, req.body, userId);
+      res.status(201).json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async updateTicketType(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      const { id: eventId, ticketTypeId } = req.params;
+      const result = await this.adminService.updateTicketType(eventId, ticketTypeId, req.body, userId);
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getEventPromotores(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      const result = await this.adminService.getEventPromotores(req.params.id, userId);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async addPromotorToEvent(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      const result = await this.adminService.addPromotorToEvent(req.params.id, req.body, userId);
+      res.status(201).json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getEventPorteros(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      const result = await this.adminService.getEventPorteros(req.params.id, userId);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async addPorteroToEvent(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      const result = await this.adminService.addPorteroToEvent(req.params.id, req.body, userId);
+      res.status(201).json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async removePorteroFromEvent(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      await this.adminService.removePorteroFromEvent(req.params.id, req.params.porteroId, userId);
+      res.json({ success: true });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getPorteroResumen(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      const result = await this.adminService.getPorteroResumenForEvent(req.params.id, req.params.porteroId, userId);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getEventAccreditationSummary(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      const result = await this.adminService.getEventAccreditationSummary(req.params.id, userId);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async setPromotorActive(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      const { vendedorId } = req.params;
+      const isActive = req.body?.isActive === true;
+      const result = await this.adminService.setPromotorActive(vendedorId, isActive, userId);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async activateAllPromotores(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      const result = await this.adminService.activateAllPromotores(req.params.id, userId);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async deactivateAllPromotores(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      const result = await this.adminService.deactivateAllPromotores(req.params.id, userId);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async exportEventPromotoresExcel(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      const buffer = await this.adminService.exportEventPromotoresExcel(req.params.id, userId);
+      const fileName = `promotores-evento-${req.params.id}-${new Date().toISOString().split('T')[0]}.xlsx`;
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.send(buffer);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async importEventPromotores(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      const items = Array.isArray(req.body) ? req.body : req.body?.items ? req.body.items : [];
+      const result = await this.adminService.importEventPromotores(req.params.id, items, userId);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async cloneEvent(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = (req as any).user?.id;
@@ -260,6 +413,23 @@ export class AdminController {
     }
   }
 
+  async getEventSalesDetails(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      const eventId = req.params.id;
+      const filters = {
+        rrpp: req.query.rrpp as string | undefined,
+        tipo: req.query.tipo as string | undefined,
+        estado: req.query.estado as string | undefined,
+        email: req.query.email as string | undefined,
+      };
+      const result = await this.adminService.getEventSalesDetails(eventId, userId, filters);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async createVendedor(req: Request, res: Response, next: NextFunction) {
     try {
       const assignedBy = (req as any).user?.id;
@@ -372,6 +542,70 @@ export class AdminController {
         success: true,
         data: result,
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getCortesiaBases(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      const result = await this.adminService.getCortesiaBases(req.params.id, userId);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async createCortesiaBase(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      const result = await this.adminService.createCortesiaBase(req.params.id, userId, req.body);
+      res.status(201).json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getCortesiaBase(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      const result = await this.adminService.getCortesiaBase(req.params.baseId, userId);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async deleteCortesiaBase(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      await this.adminService.deleteCortesiaBase(req.params.baseId, userId);
+      res.json({ success: true });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async downloadCortesiaBase(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      const base = await this.adminService.getCortesiaBase(req.params.baseId, userId);
+      const rows = (base.rows as { name: string; email: string }[]) || [];
+      const csv = ['nombre,email', ...rows.map((r) => `"${String(r.name).replace(/"/g, '""')}","${String(r.email).replace(/"/g, '""')}"`)].join('\n');
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(base.name)}.csv"`);
+      res.send('\uFEFF' + csv);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async sendCortesiasFromBase(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      const result = await this.adminService.sendCortesiasFromBase(req.params.id, userId, req.body);
+      res.json({ success: true, data: result });
     } catch (error) {
       next(error);
     }

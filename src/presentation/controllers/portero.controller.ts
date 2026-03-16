@@ -36,8 +36,8 @@ export class PorteroController {
         });
       }
 
-      const { qrCode } = req.body;
-      const result = await this.porteroService.scanTicket(qrCode, portero.id);
+      const { qrCode, eventId } = req.body;
+      const result = await this.porteroService.scanTicket(qrCode, portero.id, eventId);
       res.json({
         success: true,
         data: result,
@@ -68,6 +68,22 @@ export class PorteroController {
         success: true,
         data: result,
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async validateEvent(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      const { prisma } = await import('../../infrastructure/database/prisma');
+      const portero = await prisma.portero.findUnique({ where: { userId } });
+      if (!portero) {
+        return res.status(404).json({ success: false, error: { message: 'Portero no encontrado' } });
+      }
+      const { code, key } = req.body;
+      const result = await this.porteroService.validateEventForPortero(portero.id, code || '', key || '');
+      res.json({ success: true, data: result });
     } catch (error) {
       next(error);
     }

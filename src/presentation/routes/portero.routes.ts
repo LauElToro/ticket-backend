@@ -6,6 +6,7 @@ const router = Router();
 const porteroController = new PorteroController();
 
 // Rutas para porteros (requieren autenticación y rol PORTERO)
+router.post('/validate-event', authMiddleware, requireRole('PORTERO'), porteroController.validateEvent.bind(porteroController));
 router.post('/scan', authMiddleware, requireRole('PORTERO'), porteroController.scanTicket.bind(porteroController));
 router.get('/history', authMiddleware, requireRole('PORTERO'), porteroController.getScanHistory.bind(porteroController));
 

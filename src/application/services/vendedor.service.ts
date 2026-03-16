@@ -5,6 +5,7 @@ import { PasswordService } from '../../infrastructure/services/password.service'
 import { AppError } from '../../infrastructure/middleware/error.middleware';
 import { prisma } from '../../infrastructure/database/prisma';
 import { config } from '../../infrastructure/config';
+import crypto from 'crypto';
 
 export class VendedorService {
   private vendedorRepository: VendedorRepository;
@@ -26,6 +27,7 @@ export class VendedorService {
     dni: string;
     phone: string;
     commissionPercent: number;
+    cvuCbu?: string | null;
   }, assignedBy: string) {
     // Verificar que el usuario asignador es organizador o admin
     const assigner = await this.userRepository.findById(assignedBy);
@@ -55,6 +57,7 @@ export class VendedorService {
         userId: existingUser.id,
         assignedBy,
         commissionPercent: data.commissionPercent,
+        cvuCbu: data.cvuCbu ?? undefined,
       });
 
       // Asignar automáticamente todos los eventos activos del organizador/admin
@@ -121,6 +124,7 @@ export class VendedorService {
       userId: user.id,
       assignedBy,
       commissionPercent: data.commissionPercent,
+      cvuCbu: data.cvuCbu ?? undefined,
     });
 
     // Asignar automáticamente todos los eventos activos del organizador/admin
@@ -419,6 +423,103 @@ export class VendedorService {
 
   async getAllVendedores(assignedBy?: string) {
     return this.vendedorRepository.getAllVendedores(assignedBy);
+  }
+
+  /**
+   * Crear promotor (vendedor) solo para un evento. No asigna otros eventos.
+   * isActive: false por defecto; el link se envía por email cuando se activa.
+   * commissionPercent y cvuCbu opcionales para métricas y liquidación.
+   */
+  async createPromotorForEvent(
+    eventId: string,
+    data: { name: string; email: string; phone?: string; commissionPercent?: number; cvuCbu?: string | null },
+    assignedBy: string
+  ) {
+    const assigner = await this.userRepository.findById(assignedBy);
+    if (!assigner || (assigner.role !== 'ORGANIZER' && assigner.role !== 'ADMIN')) {
+      throw new AppError('No autorizado', 403, 'FORBIDDEN');
+    }
+    const event = await prisma.event.findUnique({ where: { id: eventId } });
+    if (!event) throw new AppError('Evento no encontrado', 404, 'EVENT_NOT_FOUND');
+    if (assigner.role !== 'ADMIN' && event.organizerId !== assignedBy) {
+      throw new AppError('No tienes permiso para este evento', 403, 'FORBIDDEN');
+    }
+
+    let user = await this.userRepository.findByEmail(data.email);
+    let vendedor: any;
+
+    if (user) {
+      vendedor = await this.vendedorRepository.findByUserId(user.id);
+      if (vendedor) {
+        const alreadyAssigned = await prisma.vendedorEvent.findUnique({
+          where: { vendedorId_eventId: { vendedorId: vendedor.id, eventId } },
+        });
+        if (alreadyAssigned) throw new AppError('Este promotor ya está asignado al evento', 409, 'ALREADY_ASSIGNED');
+      } else {
+        await prisma.user.update({ where: { id: user.id }, data: { role: 'VENDEDOR' } });
+        vendedor = await this.vendedorRepository.create({
+          userId: user.id,
+          assignedBy,
+          commissionPercent: data.commissionPercent ?? 0,
+          cvuCbu: data.cvuCbu ?? undefined,
+        });
+      }
+    } else {
+      const randomDni = String(10000000 + Math.floor(Math.random() * 90000000));
+      const tempPassword = crypto.randomBytes(8).toString('hex');
+      const hashedPassword = await this.passwordService.hash(tempPassword);
+      user = await this.userRepository.create({
+        email: data.email,
+        password: hashedPassword,
+        name: data.name,
+        dni: randomDni,
+        phone: data.phone || '0000000000',
+        role: 'VENDEDOR',
+      });
+      vendedor = await this.vendedorRepository.create({
+        userId: user.id,
+        assignedBy,
+        commissionPercent: data.commissionPercent ?? 0,
+        cvuCbu: data.cvuCbu ?? undefined,
+      });
+    }
+
+    await this.vendedorRepository.assignEvent(vendedor.id, eventId);
+    await this.createReferidoForEvent(vendedor.id, eventId);
+
+    const createdVendedor = await prisma.vendedor.update({
+      where: { id: vendedor.id },
+      data: { isActive: false },
+      include: { user: { select: { id: true, name: true, email: true, phone: true } } },
+    });
+    return createdVendedor;
+  }
+
+  /** Activar/desactivar promotor. Al activar, se envía el link por email (placeholder). */
+  async setVendedorActive(vendedorId: string, isActive: boolean, assignedBy?: string) {
+    const vendedor = await this.vendedorRepository.findById(vendedorId);
+    if (!vendedor) throw new AppError('Vendedor no encontrado', 404, 'VENDEDOR_NOT_FOUND');
+    if (assignedBy && vendedor.assignedBy !== assignedBy) {
+      const assigner = await this.userRepository.findById(assignedBy);
+      if (!assigner || assigner.role !== 'ADMIN') throw new AppError('No autorizado', 403, 'FORBIDDEN');
+    }
+    const previous = vendedor.isActive;
+    await prisma.vendedor.update({
+      where: { id: vendedorId },
+      data: { isActive },
+    });
+    if (isActive && !previous) {
+      const referidos = await this.referidoRepository.findByVendedorId(vendedorId);
+      const user = await this.userRepository.findById(vendedor.userId);
+      for (const ref of referidos) {
+        const link = ref.customUrl;
+        // TODO: Enviar email a user.email con el link de referido
+        if (config.nodeEnv === 'development') {
+          console.log(`[Promotor activado] Enviar email a ${user?.email} con link: ${link}`);
+        }
+      }
+    }
+    return { isActive };
   }
 
   async getVendedorMetrics(vendedorId: string) {

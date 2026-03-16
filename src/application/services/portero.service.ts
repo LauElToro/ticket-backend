@@ -4,6 +4,7 @@ import { PasswordService } from '../../infrastructure/services/password.service'
 import { AppError } from '../../infrastructure/middleware/error.middleware';
 import { prisma } from '../../infrastructure/database/prisma';
 import { QRService } from '../../infrastructure/services/qr.service';
+import crypto from 'crypto';
 
 export class PorteroService {
   private porteroRepository: PorteroRepository;
@@ -80,7 +81,103 @@ export class PorteroService {
     return portero;
   }
 
-  async scanTicket(qrCode: string, porteroId: string) {
+  /** Crear acreditador para un evento: genera contraseña, asigna al evento, guarda initialPassword para mostrarla y enviar por mail */
+  async createPorteroForEvent(
+    eventId: string,
+    data: { name: string; email: string; phone?: string },
+    assignedBy: string
+  ) {
+    const assigner = await this.userRepository.findById(assignedBy);
+    if (!assigner || (assigner.role !== 'ORGANIZER' && assigner.role !== 'ADMIN')) {
+      throw new AppError('No autorizado', 403, 'FORBIDDEN');
+    }
+    const event = await prisma.event.findUnique({ where: { id: eventId } });
+    if (!event) throw new AppError('Evento no encontrado', 404, 'EVENT_NOT_FOUND');
+    if (assigner.role !== 'ADMIN' && event.organizerId !== assignedBy) {
+      throw new AppError('No tienes permiso para este evento', 403, 'FORBIDDEN');
+    }
+
+    const plainPassword = crypto.randomBytes(8).toString('hex');
+    const hashedPassword = await this.passwordService.hash(plainPassword);
+
+    let user = await this.userRepository.findByEmail(data.email);
+    let portero: any;
+
+    if (user) {
+      const existingPortero = await this.porteroRepository.findByUserId(user.id);
+      if (existingPortero) {
+        const alreadyAssigned = await prisma.porteroEvent.findUnique({
+          where: { porteroId_eventId: { porteroId: existingPortero.id, eventId } },
+        });
+        if (alreadyAssigned) throw new AppError('Este acreditador ya está asignado al evento', 409, 'ALREADY_ASSIGNED');
+        await this.porteroRepository.assignToEvent(existingPortero.id, eventId);
+        await this.porteroRepository.updateInitialPassword(existingPortero.id, plainPassword);
+        portero = await this.porteroRepository.findById(existingPortero.id);
+        return { portero, password: plainPassword };
+      }
+      await prisma.user.update({ where: { id: user.id }, data: { role: 'PORTERO', password: hashedPassword } });
+      portero = await this.porteroRepository.create({
+        userId: user.id,
+        assignedBy,
+        initialPassword: plainPassword,
+      });
+    } else {
+      const randomDni = `999${Date.now().toString().slice(-8)}`;
+      user = await this.userRepository.create({
+        email: data.email,
+        password: hashedPassword,
+        name: data.name,
+        dni: randomDni,
+        phone: data.phone || '0000000000',
+        role: 'PORTERO',
+      });
+      portero = await this.porteroRepository.create({
+        userId: user.id,
+        assignedBy,
+        initialPassword: plainPassword,
+      });
+    }
+
+    await this.porteroRepository.assignToEvent(portero.id, eventId);
+    const withUser = await this.porteroRepository.findById(portero.id);
+    return { portero: withUser, password: plainPassword };
+  }
+
+  /** Validar código y llave del evento; el portero debe estar asignado. Retorna eventId y título. */
+  async validateEventForPortero(porteroId: string, code: string, key: string) {
+    const portero = await this.porteroRepository.findById(porteroId);
+    if (!portero) throw new AppError('Portero no encontrado', 404, 'PORTERO_NOT_FOUND');
+
+    const c = (code || '').trim();
+    const k = (key || '').trim();
+    const event = await prisma.event.findFirst({
+      where: { authorizationCode: c || undefined },
+      select: { id: true, title: true, authorizationCode: true, privateLink: true },
+    });
+    if (!event || event.authorizationCode !== c) throw new AppError('Código o llave incorrectos', 400, 'INVALID_EVENT');
+    if (event.privateLink != null && event.privateLink !== k) throw new AppError('Llave del evento incorrecta', 400, 'INVALID_EVENT');
+
+    const assigned = await prisma.porteroEvent.findUnique({
+      where: { porteroId_eventId: { porteroId, eventId: event.id } },
+    });
+    if (!assigned) throw new AppError('No estás asignado a este evento', 403, 'NOT_ASSIGNED');
+
+    return { eventId: event.id, title: event.title };
+  }
+
+  async removePorteroFromEvent(porteroId: string, eventId: string, userId: string) {
+    const portero = await this.porteroRepository.findById(porteroId);
+    if (!portero) throw new AppError('Portero no encontrado', 404, 'PORTERO_NOT_FOUND');
+    const event = await prisma.event.findUnique({ where: { id: eventId } });
+    if (!event) throw new AppError('Evento no encontrado', 404, 'EVENT_NOT_FOUND');
+    const admin = await this.userRepository.findById(userId);
+    if (!admin || (admin.role !== 'ADMIN' && event.organizerId !== userId)) {
+      throw new AppError('No autorizado', 403, 'FORBIDDEN');
+    }
+    await this.porteroRepository.removeFromEvent(porteroId, eventId);
+  }
+
+  async scanTicket(qrCode: string, porteroId: string, eventId?: string) {
     // Verificar que el portero existe
     const portero = await this.porteroRepository.findById(porteroId);
     if (!portero) {
@@ -123,6 +220,14 @@ export class PorteroService {
       return {
         isValid: false,
         reason: 'Entrada no encontrada',
+      };
+    }
+
+    if (eventId && ticket.eventId !== eventId) {
+      return {
+        isValid: false,
+        reason: 'La entrada no corresponde al evento actual',
+        ticket: { event: ticket.event, owner: ticket.owner },
       };
     }
 

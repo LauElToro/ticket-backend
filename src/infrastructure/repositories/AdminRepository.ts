@@ -426,7 +426,7 @@ export class AdminRepository {
   }
 
   async createEvent(data: any, userId: string) {
-    const { ticketTypes, date, time, latitude, longitude, ...eventData } = data;
+    const { ticketTypes = [], tandas, date, time, endDate, endTime, latitude, longitude, ...eventData } = data;
 
     // Validar campos requeridos
     if (!date) {
@@ -441,9 +441,14 @@ export class AdminRepository {
     const [hours, minutes] = time.split(':');
     const eventDateTime = new Date(`${year}-${month}-${day}T${hours}:${minutes}:00`);
 
-    // Generar privateLink si el evento es privado
+    // eventType: PUBLICO | PRIVADO | OCULTO | INACTIVO
+    const eventType = eventData.eventType || 'PUBLICO';
+    const isPublic = eventType === 'PUBLICO';
+    const isActive = eventType !== 'INACTIVO';
+
+    // Generar privateLink si el evento es privado u oculto (solo por link)
     let privateLink: string | undefined = undefined;
-    if (eventData.isPublic === false) {
+    if (eventType === 'PRIVADO' || eventType === 'OCULTO') {
       const { randomBytes } = await import('crypto');
       privateLink = randomBytes(8).toString('hex');
     }
@@ -462,27 +467,59 @@ export class AdminRepository {
       }
     }
 
+    // endDateTime opcional
+    let endDateTime: Date | null = null;
+    if (endDate && endTime) {
+      const [ey, em, ed] = endDate.split('-');
+      const [eh, emin] = endTime.split(':');
+      endDateTime = new Date(`${ey}-${em}-${ed}T${eh}:${emin}:00`);
+    }
+
+    // Código de autorización: 4 dígitos únicos (se genera al crear el evento)
+    const generateAuthCode = async (): Promise<string> => {
+      const { randomInt } = await import('crypto');
+      for (let i = 0; i < 50; i++) {
+        const code = String(randomInt(1000, 9999));
+        const existing = await prisma.event.findFirst({ where: { authorizationCode: code } });
+        if (!existing) return code;
+      }
+      return String(randomInt(1000, 9999)); // fallback
+    };
+    const authorizationCode = await generateAuthCode();
+
     // Construir objeto de datos explícitamente para asegurar que todos los campos estén presentes
     const prismaData: any = {
       title: eventData.title,
       subtitle: eventData.subtitle || null,
       description: eventData.description || null,
-      category: eventData.category,
+      category: eventData.category || 'Otro',
       image: eventData.image || null,
-      venue: eventData.venue,
+      venue: eventData.venue || '',
       address: eventData.address || null,
-      city: eventData.city,
+      city: eventData.city || '',
+      region: eventData.region || null,
+      country: eventData.country || null,
       date: eventDateTime,
-      time: time, // Incluir time explícitamente
+      time: time,
+      endDate: endDateTime,
+      endTime: endTime || null,
       organizerId: userId,
-      isPublic: eventData.isPublic !== undefined ? eventData.isPublic : true,
+      isPublic,
+      isActive,
+      eventType,
+      eventMode: eventData.eventMode || null,
+      ageRestriction: !!eventData.ageRestriction,
+      minAge: eventData.ageRestriction && eventData.minAge != null ? parseInt(String(eventData.minAge), 10) : null,
       privateLink: privateLink || null,
       metaPixelId: metaPixelId,
       googleAdsId: googleAdsId,
+      authorizationCode,
+      bannerTop: eventData.bannerTop || null,
+      bannerEmail: eventData.bannerEmail || null,
     };
 
     // Agregar coordenadas si están presentes
-    if (latitude && longitude) {
+    if (latitude != null && longitude != null) {
       prismaData.latitude = parseFloat(latitude);
       prismaData.longitude = parseFloat(longitude);
     }
@@ -492,9 +529,9 @@ export class AdminRepository {
       data: prismaData,
     });
 
-    // Crear los tipos de entrada (sin precio, ya que el precio está en las tandas)
+    // Crear los tipos de entrada si se envían (flujo por pasos puede crear evento sin tickets primero)
     const createdTicketTypes = await Promise.all(
-      ticketTypes.map((tt: any) =>
+      (Array.isArray(ticketTypes) ? ticketTypes : []).map((tt: any) =>
         prisma.ticketType.create({
           data: {
             eventId: event.id,
@@ -561,7 +598,7 @@ export class AdminRepository {
 
   async updateEvent(id: string, data: any, userId: string) {
     // Extraer ticketTypes y tandas primero para no incluirlos en eventData
-    const { ticketTypes, tandas, date, time, latitude, longitude, ...eventData } = data;
+    const { ticketTypes, tandas, date, time, endDate, endTime, latitude, longitude, ...eventData } = data;
 
     // Verificar que el evento existe y pertenece al usuario (si es organizador)
     const existingEvent = await prisma.event.findUnique({
@@ -628,17 +665,26 @@ export class AdminRepository {
       updateData.googleAdsId = googleAdsId;
     }
 
-    // Manejar isPublic y privateLink
-    if (eventData.isPublic !== undefined) {
+    // Manejar eventType (PUBLICO | PRIVADO | OCULTO | INACTIVO) o isPublic/privateLink
+    if (eventData.eventType !== undefined) {
+      const eventType = eventData.eventType;
+      updateData.eventType = eventType;
+      updateData.isPublic = eventType === 'PUBLICO';
+      updateData.isActive = eventType !== 'INACTIVO';
+      if (eventType === 'PRIVADO' || eventType === 'OCULTO') {
+        if (!existingEvent.privateLink) {
+          const { randomBytes } = await import('crypto');
+          updateData.privateLink = randomBytes(8).toString('hex');
+        }
+      } else {
+        updateData.privateLink = null;
+      }
+    } else if (eventData.isPublic !== undefined) {
       updateData.isPublic = eventData.isPublic;
-      
-      // Si cambia a privado y no tiene privateLink, generar uno
       if (eventData.isPublic === false && !existingEvent.privateLink) {
         const { randomBytes } = await import('crypto');
         updateData.privateLink = randomBytes(8).toString('hex');
-      }
-      // Si cambia a público, eliminar el privateLink
-      else if (eventData.isPublic === true) {
+      } else if (eventData.isPublic === true) {
         updateData.privateLink = null;
       }
     }
@@ -659,6 +705,17 @@ export class AdminRepository {
     // Incluir time si está presente
     if (time !== undefined) {
       updateData.time = time;
+    }
+
+    // Día y hora de término del evento
+    if (endDate && endTime) {
+      const [ey, em, ed] = endDate.split('-');
+      const [eh, emin] = endTime.split(':');
+      updateData.endDate = new Date(`${ey}-${em}-${ed}T${eh}:${emin}:00`);
+      updateData.endTime = endTime;
+    } else if (endDate === null || endTime === null) {
+      updateData.endDate = null;
+      updateData.endTime = null;
     }
 
     // Agregar coordenadas si están presentes
@@ -864,6 +921,143 @@ export class AdminRepository {
     // Si el evento no ha pasado y no tiene órdenes, se puede borrar físicamente
     return prisma.event.delete({
       where: { id },
+    });
+  }
+
+  /** Crear un tipo de entrada (eTicket) para el evento. Crea Tanda "Venta general" si no existe. */
+  async createTicketType(eventId: string, data: any, userId: string) {
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      include: { tandas: { orderBy: { startDate: 'asc' } }, ticketTypes: true },
+    });
+    if (!event) throw new Error('Evento no encontrado');
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    if (user?.role === 'ORGANIZER' && event.organizerId !== userId) throw new Error('No autorizado');
+
+    const quantity = Math.max(0, parseInt(String(data.quantity ?? data.totalQty ?? 1), 10) || 1);
+    const price = parseFloat(String(data.price ?? 0)) || 0;
+
+    let tanda = event.tandas[0];
+    if (!tanda) {
+      const now = new Date();
+      const eventDate = new Date(event.date);
+      const start = new Date(now);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(eventDate);
+      end.setHours(23, 59, 59, 999);
+      if (end < start) end.setTime(start.getTime() + 30 * 24 * 60 * 60 * 1000);
+      tanda = await prisma.tanda.create({
+        data: {
+          eventId,
+          name: 'Venta general',
+          startDate: start,
+          endDate: end,
+          isActive: true,
+        },
+      });
+    }
+
+    const saleEndDate = data.saleEndDate && data.saleEndTime
+      ? (() => {
+          const d = String(data.saleEndDate).split('T')[0].split('-');
+          const t = String(data.saleEndTime).split(':');
+          return new Date(`${d[0]}-${d[1]}-${d[2]}T${t[0] || '00'}:${t[1] || '00'}:00`);
+        })()
+      : null;
+
+    const validUntil = data.validUntil && data.validUntilTime
+      ? (() => {
+          const d = String(data.validUntil).split('T')[0].split('-');
+          const t = String(data.validUntilTime).split(':');
+          return new Date(`${d[0]}-${d[1]}-${d[2]}T${t[0] || '00'}:${t[1] || '00'}:00`);
+        })()
+      : null;
+
+    const ticketType = await prisma.ticketType.create({
+      data: {
+        eventId,
+        name: data.name || 'Entrada',
+        description: data.description || null,
+        totalQty: quantity,
+        availableQty: quantity,
+        status: data.status || 'Activo',
+        ticketKind: data.ticketKind || 'Presencial',
+        image: data.image || null,
+        saleEndDate,
+        saleEndTime: data.saleEndTime || null,
+        validUntil,
+        validUntilTime: data.validUntilTime || null,
+      },
+    });
+
+    await prisma.tandaTicketType.create({
+      data: {
+        tandaId: tanda.id,
+        ticketTypeId: ticketType.id,
+        price,
+        quantity,
+        availableQty: quantity,
+      },
+    });
+
+    return prisma.ticketType.findUnique({
+      where: { id: ticketType.id },
+      include: { tandaTicketTypes: { include: { tanda: true } } },
+    });
+  }
+
+  /** Actualizar un tipo de entrada (eTicket). */
+  async updateTicketType(eventId: string, ticketTypeId: string, data: any, userId: string) {
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      include: { ticketTypes: true },
+    });
+    if (!event) throw new Error('Evento no encontrado');
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    if (user?.role === 'ORGANIZER' && event.organizerId !== userId) throw new Error('No autorizado');
+
+    const tt = event.ticketTypes.find((t) => t.id === ticketTypeId);
+    if (!tt) throw new Error('Tipo de entrada no encontrado');
+
+    const updateData: any = {};
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.description !== undefined) updateData.description = data.description;
+    if (data.status !== undefined) updateData.status = data.status;
+    if (data.ticketKind !== undefined) updateData.ticketKind = data.ticketKind;
+    if (data.image !== undefined) updateData.image = data.image;
+    if (data.saleEndDate !== undefined) updateData.saleEndDate = data.saleEndDate ? new Date(data.saleEndDate) : null;
+    if (data.saleEndTime !== undefined) updateData.saleEndTime = data.saleEndTime;
+    if (data.validUntil !== undefined) updateData.validUntil = data.validUntil ? new Date(data.validUntil) : null;
+    if (data.validUntilTime !== undefined) updateData.validUntilTime = data.validUntilTime;
+
+    if (data.quantity !== undefined || data.totalQty !== undefined) {
+      const q = Math.max(0, parseInt(String(data.quantity ?? data.totalQty ?? tt.totalQty), 10) || 0);
+      const alreadySold = tt.soldQty || 0;
+      updateData.totalQty = q;
+      updateData.availableQty = Math.max(0, q - alreadySold);
+    }
+
+    await prisma.ticketType.update({
+      where: { id: ticketTypeId },
+      data: updateData,
+    });
+
+    if (data.price !== undefined) {
+      const price = parseFloat(String(data.price)) || 0;
+      const ttt = await prisma.tandaTicketType.findFirst({
+        where: { ticketTypeId },
+      });
+      if (ttt) {
+        await prisma.tandaTicketType.update({
+          where: { id: ttt.id },
+          data: { price },
+        });
+      }
+    }
+
+    return prisma.ticketType.findUnique({
+      where: { id: ticketTypeId },
+      include: { tandaTicketTypes: { include: { tanda: true } } },
     });
   }
 
@@ -1287,6 +1481,9 @@ export class AdminRepository {
       prisma.event.findUnique({
         where: { id: eventId },
         include: {
+          organizer: {
+            select: { id: true, name: true, email: true },
+          },
           ticketTypes: {
             select: {
               id: true,
@@ -1343,6 +1540,391 @@ export class AdminRepository {
       ticketsSold,
       ticketsScanned,
       revenue: revenue._sum.totalAmount || 0,
+    };
+  }
+
+  /** Promotores RRPP asignados a un evento (para Links RRPP) */
+  async getEventPromotores(eventId: string, userId: string) {
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: { id: true, title: true, date: true, authorizationCode: true, organizerId: true },
+    });
+    if (!event) throw new Error('Evento no encontrado');
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    if (user?.role === 'ORGANIZER' && event.organizerId !== userId) throw new Error('No autorizado');
+
+    const vendedorEvents = await prisma.vendedorEvent.findMany({
+      where: { eventId },
+      include: {
+        vendedor: {
+          include: {
+            user: { select: { id: true, name: true, email: true, phone: true } },
+          },
+        },
+      },
+    });
+
+    const referidos = await prisma.referido.findMany({
+      where: { eventId },
+      select: { vendedorId: true, customCode: true, customUrl: true, conversionCount: true, clickCount: true },
+    });
+    const referidoByVendedor = Object.fromEntries(referidos.map((r) => [r.vendedorId, r]));
+
+    const ordersByVendedor = await prisma.order.groupBy({
+      by: ['vendedorId'],
+      where: { eventId, paymentStatus: 'COMPLETED' },
+      _count: { id: true },
+      _sum: { totalAmount: true },
+    });
+    const ordersByV = Object.fromEntries(ordersByVendedor.map((o) => [o.vendedorId || '', o]));
+
+    const promotores = vendedorEvents.map((ve) => {
+      const ref = referidoByVendedor[ve.vendedorId];
+      const orders = ordersByV[ve.vendedorId];
+      return {
+        vendedorEventId: ve.id,
+        vendedorId: ve.vendedorId,
+        name: ve.vendedor.user.name,
+        email: ve.vendedor.user.email,
+        phone: ve.vendedor.user.phone,
+        isActive: ve.vendedor.isActive,
+        soldQty: ve.soldQty,
+        ticketLimit: ve.ticketLimit,
+        linkVenta: ref ? { customCode: ref.customCode, customUrl: ref.customUrl } : null,
+        cortesia: 0,
+        invitaciones: 0,
+        conversionCount: ref?.conversionCount ?? 0,
+        clickCount: ref?.clickCount ?? 0,
+      };
+    });
+
+    return { event, promotores };
+  }
+
+  /** Bases de datos de cortesías por evento */
+  async getCortesiaBases(eventId: string, userId: string) {
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: { id: true, organizerId: true },
+    });
+    if (!event) throw new Error('Evento no encontrado');
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    if (user?.role === 'ORGANIZER' && event.organizerId !== userId) throw new Error('No autorizado');
+
+    const bases = await prisma.eventCortesiaBase.findMany({
+      where: { eventId },
+      orderBy: { createdAt: 'desc' },
+    });
+    return bases.map((b) => ({
+      id: b.id,
+      name: b.name,
+      quantity: Array.isArray(b.rows) ? (b.rows as any[]).length : 0,
+      createdAt: b.createdAt,
+    }));
+  }
+
+  async createCortesiaBase(eventId: string, userId: string, data: { name: string; rows: { name: string; email: string }[] }) {
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: { id: true, organizerId: true },
+    });
+    if (!event) throw new Error('Evento no encontrado');
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    if (user?.role === 'ORGANIZER' && event.organizerId !== userId) throw new Error('No autorizado');
+
+    const normalized = data.rows
+      .map((r) => ({ name: String(r.name || '').trim(), email: String(r.email || '').trim().toLowerCase() }))
+      .filter((r) => r.email);
+    return prisma.eventCortesiaBase.create({
+      data: { eventId, name: data.name.trim() || 'Sin nombre', rows: normalized as any },
+    });
+  }
+
+  async getCortesiaBase(baseId: string, userId: string) {
+    const base = await prisma.eventCortesiaBase.findUnique({
+      where: { id: baseId },
+      include: { event: { select: { id: true, organizerId: true } } },
+    });
+    if (!base) throw new Error('Base no encontrada');
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    if (user?.role === 'ORGANIZER' && base.event.organizerId !== userId) throw new Error('No autorizado');
+    return base;
+  }
+
+  async deleteCortesiaBase(baseId: string, userId: string) {
+    await this.getCortesiaBase(baseId, userId);
+    await prisma.eventCortesiaBase.delete({ where: { id: baseId } });
+  }
+
+  /**
+   * Detalles de ventas eTickets: lista de tickets (vendidos + cortesías) con filtros y resumen.
+   * Solo tickets de órdenes COMPLETED. RRPP = vendedor de la orden o "-". Estado = Vigente (ACTIVE) o Validada (USED) con fecha de escaneo.
+   */
+  async getEventSalesDetails(
+    eventId: string,
+    userId: string,
+    filters: { rrpp?: string; tipo?: string; estado?: string; email?: string } = {}
+  ) {
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: { id: true, organizerId: true },
+    });
+    if (!event) throw new Error('Evento no encontrado');
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    if (user?.role === 'ORGANIZER' && event.organizerId !== userId) throw new Error('No autorizado');
+
+    const where: any = {
+      eventId,
+      order: { paymentStatus: 'COMPLETED' },
+    };
+    if (filters.rrpp) where.order.vendedorId = filters.rrpp;
+    if (filters.tipo) where.ticketTypeId = filters.tipo;
+    if (filters.estado === 'Vigente') where.status = 'ACTIVE';
+    if (filters.estado === 'Validada') where.status = 'USED';
+    if (filters.email?.trim()) {
+      where.owner = { email: { contains: filters.email.trim(), mode: 'insensitive' } };
+    }
+
+    const tickets = await prisma.ticket.findMany({
+      where,
+      include: {
+        owner: { select: { id: true, name: true, email: true, phone: true } },
+        ticketType: { select: { id: true, name: true } },
+        order: {
+          select: {
+            id: true,
+            totalAmount: true,
+            paymentMethod: true,
+            vendedorId: true,
+            vendedor: { include: { user: { select: { name: true } } } },
+          },
+        },
+      },
+      orderBy: { purchaseDate: 'desc' },
+    });
+
+    const rows = tickets.map((t) => {
+      const orderTicketsCount = 1; // we need count per order - will fix below
+      const orderTotal = Number((t.order as any).totalAmount ?? 0);
+      const pricePerTicket = orderTotal; // will recompute with real count
+      return {
+        id: t.id,
+        nombre: (t.owner as any).name,
+        email: (t.owner as any).email,
+        telefono: (t.owner as any).phone ?? '-',
+        fechaAdquisicion: t.purchaseDate,
+        tipo: (t.ticketType as any).name,
+        rrpp: (t.order as any).vendedor?.user?.name ?? '-',
+        vendedorId: (t.order as any).vendedorId ?? null,
+        estado: t.status === 'USED' ? 'Validada' : 'Vigente',
+        fechaEntrada: t.scannedAt ?? null,
+        formaPago: (t.order as any).paymentMethod === 'MERCADOPAGO' ? 'Mercado Pago' : (t.order as any).paymentMethod === 'CASH' ? 'Efectivo' : (t.order as any).paymentMethod ?? 'Venta',
+        precio: orderTotal,
+        orderId: (t.order as any).id,
+      };
+    });
+
+    const orderIds = [...new Set(rows.map((r) => r.orderId))];
+    const counts = await prisma.ticket.groupBy({
+      by: ['orderId'],
+      where: { orderId: { in: orderIds } },
+      _count: { id: true },
+    });
+    const countByOrder = Object.fromEntries(counts.map((c) => [c.orderId, c._count.id]));
+
+    const rowsWithPrice = rows.map((r) => {
+      const n = countByOrder[r.orderId] || 1;
+      const orderTotal = r.precio;
+      const ticketsInOrder = n;
+      const pricePerTicket = ticketsInOrder > 0 ? orderTotal / ticketsInOrder : orderTotal;
+      return {
+        ...r,
+        precio: pricePerTicket,
+      };
+    });
+
+    const allTicketsForSummary = await prisma.ticket.findMany({
+      where: { eventId, order: { paymentStatus: 'COMPLETED' } },
+      include: { order: { select: { totalAmount: true, paymentStatus: true } } },
+    });
+    const totalTickets = allTicketsForSummary.length;
+    const ordersByTotal = await prisma.order.findMany({
+      where: { eventId, paymentStatus: 'COMPLETED' },
+      select: { id: true, totalAmount: true },
+    });
+    const totalVendidas = allTicketsForSummary.filter((t) => Number((t.order as any).totalAmount ?? 0) > 0).length;
+    const totalCortesias = allTicketsForSummary.filter((t) => Number((t.order as any).totalAmount ?? 0) === 0).length;
+    const subtotal = ordersByTotal.reduce((s, o) => s + Number(o.totalAmount ?? 0), 0);
+    const refunded = await prisma.order.aggregate({
+      where: { eventId, paymentStatus: 'REFUNDED' },
+      _sum: { totalAmount: true },
+    });
+    const solicitudesDevolucion = Number(refunded._sum.totalAmount ?? 0);
+    const ticketsEmitidosValidos = await prisma.ticket.count({
+      where: { eventId, status: { in: ['ACTIVE', 'USED'] } },
+    });
+
+    const promotores = await prisma.vendedorEvent.findMany({
+      where: { eventId },
+      include: { vendedor: { include: { user: { select: { id: true, name: true } } } } },
+    });
+
+    return {
+      tickets: rowsWithPrice.map(({ orderId, ...r }) => r),
+      summary: {
+        totalTickets,
+        totalVendidas,
+        totalCortesias,
+        subtotal,
+        solicitudesDevolucion,
+        total: subtotal - solicitudesDevolucion,
+        ticketsEmitidosValidos,
+      },
+      promotores: promotores.map((pe) => ({ id: pe.vendedorId, name: (pe.vendedor as any).user?.name })),
+      ticketTypes: await prisma.ticketType.findMany({ where: { eventId }, select: { id: true, name: true } }),
+      event: { id: event.id },
+    };
+  }
+
+  /** Porteros (acreditadores) asignados a un evento */
+  async getEventPorteros(eventId: string, userId: string) {
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: { id: true, organizerId: true },
+    });
+    if (!event) throw new Error('Evento no encontrado');
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    if (user?.role === 'ORGANIZER' && event.organizerId !== userId) throw new Error('No autorizado');
+
+    const porterosEvents = await prisma.porteroEvent.findMany({
+      where: { eventId },
+      include: {
+        portero: {
+          include: {
+            user: { select: { id: true, name: true, email: true, phone: true } },
+          },
+        },
+      },
+    });
+
+    const validatorIds = porterosEvents.map((pe) => (pe.portero as any).user.id);
+    const counts = await prisma.ticketValidation.groupBy({
+      by: ['validatorId'],
+      where: {
+        validatorId: { in: validatorIds },
+        ticket: { eventId },
+      },
+      _count: { id: true },
+    });
+    const countByValidator = Object.fromEntries(counts.map((c) => [c.validatorId, c._count.id]));
+
+    return porterosEvents.map((pe) => {
+      const p = pe.portero as any;
+      const u = p.user;
+      return {
+        id: p.id,
+        userId: p.userId,
+        nombre: u?.name,
+        usuario: u?.email,
+        email: u?.email,
+        telefono: u?.phone ?? '-',
+        initialPassword: p.initialPassword ?? null,
+        acreditacionesCount: countByValidator[u?.id] ?? 0,
+      };
+    });
+  }
+
+  async getPorteroResumenForEvent(eventId: string, porteroId: string, userId: string) {
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: { id: true, organizerId: true },
+    });
+    if (!event) throw new Error('Evento no encontrado');
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    if (user?.role === 'ORGANIZER' && event.organizerId !== userId) throw new Error('No autorizado');
+
+    const porteroEvent = await prisma.porteroEvent.findUnique({
+      where: { porteroId_eventId: { porteroId, eventId } },
+    });
+    if (!porteroEvent) throw new Error('El portero no está asignado a este evento');
+
+    const portero = await prisma.portero.findUnique({
+      where: { id: porteroId },
+      select: { userId: true },
+    });
+    if (!portero) throw new Error('Portero no encontrado');
+
+    const validations = await prisma.ticketValidation.findMany({
+      where: {
+        validatorId: portero.userId,
+        ticket: { eventId },
+      },
+      include: {
+        ticket: {
+          include: {
+            owner: { select: { name: true, email: true } },
+          },
+        },
+      },
+      orderBy: { scannedAt: 'desc' },
+      take: 500,
+    });
+
+    return validations.map((v) => ({
+      id: v.id,
+      scannedAt: v.scannedAt,
+      isValid: v.isValid,
+      ticketOwner: (v.ticket as any).owner?.name,
+      ticketEmail: (v.ticket as any).owner?.email,
+    }));
+  }
+
+  /** Resumen de acreditación: por tipo de ticket, validados / restante / total */
+  async getEventAccreditationSummary(eventId: string, userId: string) {
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: { id: true, title: true, organizerId: true },
+    });
+    if (!event) throw new Error('Evento no encontrado');
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    if (user?.role === 'ORGANIZER' && event.organizerId !== userId) throw new Error('No autorizado');
+
+    const ticketTypes = await prisma.ticketType.findMany({
+      where: { eventId },
+      select: { id: true, name: true },
+    });
+
+    const eTickets: { tipo: string; validados: number; restante: number; total: number }[] = [];
+    let totalValidados = 0;
+    let totalRestante = 0;
+    let totalTotal = 0;
+
+    for (const tt of ticketTypes) {
+      const [total, used] = await Promise.all([
+        prisma.ticket.count({ where: { eventId, ticketTypeId: tt.id } }),
+        prisma.ticket.count({ where: { eventId, ticketTypeId: tt.id, status: 'USED' } }),
+      ]);
+      const validados = used;
+      const restante = total - used;
+      eTickets.push({
+        tipo: tt.name,
+        validados,
+        restante,
+        total,
+      });
+      totalValidados += validados;
+      totalRestante += restante;
+      totalTotal += total;
+    }
+
+    return {
+      event: { id: event.id, title: event.title },
+      eTickets,
+      totalETickets: { validados: totalValidados, restante: totalRestante, total: totalTotal },
+      consumos: [],
+      totalConsumos: { validados: 0, restante: 0, total: 0 },
+      ticketsFisicos: [],
+      totalTicketsFisicos: { validados: 0, restante: 0, total: 0 },
     };
   }
 }

@@ -52,6 +52,80 @@ export class AdminService {
     return this.adminRepository.deleteEvent(id, userId);
   }
 
+  async createTicketType(eventId: string, data: any, userId: string) {
+    return this.adminRepository.createTicketType(eventId, data, userId);
+  }
+
+  async updateTicketType(eventId: string, ticketTypeId: string, data: any, userId: string) {
+    return this.adminRepository.updateTicketType(eventId, ticketTypeId, data, userId);
+  }
+
+  async getEventPromotores(eventId: string, userId: string) {
+    return this.adminRepository.getEventPromotores(eventId, userId);
+  }
+
+  async addPromotorToEvent(eventId: string, data: { name: string; email: string; phone?: string; commissionPercent?: number; cvuCbu?: string | null }, userId: string) {
+    return this.vendedorService.createPromotorForEvent(eventId, data, userId);
+  }
+
+  async setPromotorActive(vendedorId: string, isActive: boolean, userId: string) {
+    return this.vendedorService.setVendedorActive(vendedorId, isActive, userId);
+  }
+
+  async activateAllPromotores(eventId: string, userId: string) {
+    const { promotores } = await this.adminRepository.getEventPromotores(eventId, userId);
+    for (const p of promotores) {
+      await this.vendedorService.setVendedorActive(p.vendedorId, true, userId);
+    }
+    return { activated: promotores.length };
+  }
+
+  async deactivateAllPromotores(eventId: string, userId: string) {
+    const { promotores } = await this.adminRepository.getEventPromotores(eventId, userId);
+    for (const p of promotores) {
+      await this.vendedorService.setVendedorActive(p.vendedorId, false, userId);
+    }
+    return { deactivated: promotores.length };
+  }
+
+  async exportEventPromotoresExcel(eventId: string, userId: string) {
+    const { event, promotores } = await this.adminRepository.getEventPromotores(eventId, userId);
+    const XLSX = require('xlsx');
+    const rows = promotores.map((p: any) => ({
+      Nombre: p.name,
+      Email: p.email,
+      Teléfono: p.phone || '',
+      'Link Venta': p.linkVenta?.customUrl || '',
+      Vendidas: p.soldQty ?? 0,
+      Estado: p.isActive ? 'Activo' : 'Inactivo',
+    }));
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Promotores');
+    return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+  }
+
+  async importEventPromotores(eventId: string, items: Array<{ name: string; email: string; phone?: string }>, userId: string) {
+    const results: { email: string; success: boolean; message?: string }[] = [];
+    for (const item of items) {
+      try {
+        if (!item.email?.trim()) {
+          results.push({ email: item.email || '', success: false, message: 'Email requerido' });
+          continue;
+        }
+        await this.addPromotorToEvent(eventId, {
+          name: item.name?.trim() || item.email.split('@')[0],
+          email: item.email.trim(),
+          phone: item.phone?.trim(),
+        }, userId);
+        results.push({ email: item.email, success: true });
+      } catch (e: any) {
+        results.push({ email: item.email || '', success: false, message: e.message || 'Error' });
+      }
+    }
+    return { results };
+  }
+
   async cloneEvent(eventId: string, userId: string) {
     return this.adminRepository.cloneEvent(eventId, userId);
   }
@@ -104,6 +178,10 @@ export class AdminService {
     return stats;
   }
 
+  async getEventSalesDetails(eventId: string, userId: string, filters: { rrpp?: string; tipo?: string; estado?: string; email?: string }) {
+    return this.adminRepository.getEventSalesDetails(eventId, userId, filters);
+  }
+
   async createVendedor(data: {
     email: string;
     password: string;
@@ -111,6 +189,7 @@ export class AdminService {
     dni: string;
     phone: string;
     commissionPercent: number;
+    cvuCbu?: string | null;
   }, assignedBy: string) {
     return this.vendedorService.createVendedor(data, assignedBy);
   }
@@ -131,6 +210,26 @@ export class AdminService {
 
   async getAllPorteros(assignedBy?: string) {
     return this.porteroService.getAllPorteros(assignedBy);
+  }
+
+  async getEventPorteros(eventId: string, userId: string) {
+    return this.adminRepository.getEventPorteros(eventId, userId);
+  }
+
+  async addPorteroToEvent(eventId: string, data: { name: string; email: string; phone?: string }, userId: string) {
+    return this.porteroService.createPorteroForEvent(eventId, data, userId);
+  }
+
+  async removePorteroFromEvent(eventId: string, porteroId: string, userId: string) {
+    return this.porteroService.removePorteroFromEvent(porteroId, eventId, userId);
+  }
+
+  async getPorteroResumenForEvent(eventId: string, porteroId: string, userId: string) {
+    return this.adminRepository.getPorteroResumenForEvent(eventId, porteroId, userId);
+  }
+
+  async getEventAccreditationSummary(eventId: string, userId: string) {
+    return this.adminRepository.getEventAccreditationSummary(eventId, userId);
   }
 
   async exportUsersToExcel() {
@@ -243,6 +342,7 @@ export class AdminService {
   /**
    * Regala entradas por email
    * Si el usuario no existe, lo crea automáticamente
+   * @param expiresAt opcional; si no se pasa, se usan 48 días hábiles
    */
   async giftTicketsByEmail(data: {
     eventId: string;
@@ -251,8 +351,9 @@ export class AdminService {
     recipientEmail: string;
     recipientName?: string;
     message?: string;
+    expiresAt?: Date;
   }, organizerId: string) {
-    const { eventId, ticketTypeId, quantity, recipientEmail, recipientName, message } = data;
+    const { eventId, ticketTypeId, quantity, recipientEmail, recipientName, message, expiresAt: expiresAtParam } = data;
 
     // Validar que el evento existe y pertenece al organizador
     const event = await prisma.event.findUnique({
@@ -369,7 +470,7 @@ export class AdminService {
     // Crear tickets
     const tickets = [];
     const purchaseDate = new Date();
-    const expiresAt = DateService.addBusinessDays(purchaseDate, 48);
+    const expiresAt = expiresAtParam ?? DateService.addBusinessDays(purchaseDate, 48);
 
     for (let i = 0; i < quantity; i++) {
       const qrCode = QRService.generateQRCode(order.id, eventId, recipient.id);
@@ -428,6 +529,115 @@ export class AdminService {
         qrCode: t.qrCode,
         status: t.status,
       })),
+    };
+  }
+
+  async getCortesiaBases(eventId: string, userId: string) {
+    return this.adminRepository.getCortesiaBases(eventId, userId);
+  }
+
+  async createCortesiaBase(eventId: string, userId: string, data: { name: string; rows: { name: string; email: string }[] }) {
+    return this.adminRepository.createCortesiaBase(eventId, userId, data);
+  }
+
+  async getCortesiaBase(baseId: string, userId: string) {
+    return this.adminRepository.getCortesiaBase(baseId, userId);
+  }
+
+  async deleteCortesiaBase(baseId: string, userId: string) {
+    return this.adminRepository.deleteCortesiaBase(baseId, userId);
+  }
+
+  /**
+   * Envía cortesías a todos los contactos de una base de datos.
+   * Valida código de autorización si el evento lo tiene; opcionalmente vigencia (validUntil + validUntilTime).
+   */
+  async sendCortesiasFromBase(
+    eventId: string,
+    userId: string,
+    data: {
+      baseId: string;
+      ticketTypeId: string;
+      quantityPerRecipient?: number;
+      authorizationCode?: string;
+      validUntil?: string; // ISO date YYYY-MM-DD
+      validUntilTime?: string; // "HH:mm"
+    }
+  ) {
+    const base = await this.adminRepository.getCortesiaBase(data.baseId, userId);
+    if (base.eventId !== eventId) {
+      throw new AppError('La base no pertenece a este evento', 400, 'BASE_EVENT_MISMATCH');
+    }
+
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      include: { ticketTypes: true, organizer: true },
+    });
+    if (!event) throw new AppError('Evento no encontrado', 404, 'EVENT_NOT_FOUND');
+    if (event.organizerId !== userId) {
+      throw new AppError('No tienes permiso para enviar cortesías de este evento', 403, 'FORBIDDEN');
+    }
+
+    if (event.authorizationCode && data.authorizationCode !== event.authorizationCode) {
+      throw new AppError('Código de autorización incorrecto', 400, 'INVALID_AUTHORIZATION_CODE');
+    }
+
+    const ticketType = event.ticketTypes.find((tt) => tt.id === data.ticketTypeId);
+    if (!ticketType) throw new AppError('Tipo de entrada no encontrado', 404, 'TICKET_TYPE_NOT_FOUND');
+
+    const rows = (base.rows as { name: string; email: string }[]) || [];
+    const quantityPerRecipient = data.quantityPerRecipient ?? 1;
+    const totalTickets = rows.length * quantityPerRecipient;
+    if (ticketType.availableQty < totalTickets) {
+      throw new AppError(
+        `No hay suficientes entradas. Necesitás ${totalTickets}, disponibles: ${ticketType.availableQty}`,
+        400,
+        'INSUFFICIENT_TICKETS'
+      );
+    }
+
+    let expiresAt: Date | undefined;
+    if (data.validUntil) {
+      const [y, m, d] = data.validUntil.split('-').map(Number);
+      const hours = data.validUntilTime ? data.validUntilTime.split(':').map(Number) : [0, 0];
+      expiresAt = new Date(y, m - 1, d, hours[0], hours[1] || 0, 0, 0);
+    } else if (event.endDate) {
+      const d = new Date(event.endDate);
+      const [h, min] = (event.endTime || '23:59').split(':').map(Number);
+      d.setHours(h, min, 0, 0);
+      expiresAt = d;
+    }
+
+    const results: { email: string; success: boolean; message?: string }[] = [];
+    for (const row of rows) {
+      if (!row.email) continue;
+      try {
+        await this.giftTicketsByEmail(
+          {
+            eventId,
+            ticketTypeId: data.ticketTypeId,
+            quantity: quantityPerRecipient,
+            recipientEmail: row.email,
+            recipientName: row.name || undefined,
+            expiresAt,
+          },
+          userId
+        );
+        results.push({ email: row.email, success: true });
+      } catch (err: any) {
+        results.push({ email: row.email, success: false, message: err.message || 'Error' });
+      }
+    }
+
+    const successCount = results.filter((r) => r.success).length;
+    const failCount = results.filter((r) => !r.success).length;
+    return {
+      success: true,
+      sent: successCount,
+      failed: failCount,
+      total: rows.length,
+      results,
+      message: `Enviadas ${successCount} cortesías${failCount > 0 ? `, ${failCount} fallos` : ''}.`,
     };
   }
 }
