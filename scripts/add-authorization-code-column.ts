@@ -1,6 +1,6 @@
 /**
- * Script de un solo uso: agrega la columna authorizationCode a la tabla Event
- * si no existe. Usa la URL directa DATABASE_URL (postgres://), no el proxy PRISMA_DATABASE_URL.
+ * Asegura que la tabla Event tenga todas las columnas que espera Prisma.
+ * Usa la URL directa DATABASE_URL (postgres://), no el proxy PRISMA_DATABASE_URL.
  *
  * Ejecutar: npm run db:add-auth-column
  */
@@ -15,12 +15,21 @@ if (!directUrl || !directUrl.startsWith('postgres')) {
 
 const prisma = new PrismaClient({ datasourceUrl: directUrl });
 
+const EVENT_COLUMNS_TO_ADD = [
+  'authorizationCode',
+  'bannerTop',
+  'bannerEmail',
+];
+
 async function main() {
   await prisma.$connect();
-  await prisma.$executeRawUnsafe(
-    'ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "authorizationCode" TEXT;'
-  );
-  console.log('Columna Event.authorizationCode agregada (o ya existía).');
+  for (const col of EVENT_COLUMNS_TO_ADD) {
+    await prisma.$executeRawUnsafe(
+      `ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "${col}" TEXT;`
+    );
+    console.log(`Event.${col} agregada (o ya existía).`);
+  }
+  console.log('Listo. Volvé a intentar crear el evento.');
   await prisma.$disconnect();
 }
 
