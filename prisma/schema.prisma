@@ -13,7 +13,7 @@ model User {
   id            String   @id @default(cuid())
   email         String   @unique
   password      String
-  name          String
+  name          String   @map("nombre")
   dni           String   @unique
   phone         String
   role          UserRole @default(USER)
